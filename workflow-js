@@ -2640,14 +2640,6 @@ function isExpired(dateString) {
         
     }
 
-    // Handler específico para fechar menus de workflow
-    document.addEventListener('click', function(e) {
-        if (!e.target.closest('.workflow-menu')) {
-            document.querySelectorAll('.workflow-menu-dropdown').forEach(menu => {
-                menu.style.display = 'none';
-            });
-        }
-    });
 
     // Função para abrir o modal de edição do workflow
     function openEditWorkflowModal(workflowId, currentName) {
@@ -2786,26 +2778,6 @@ function isExpired(dateString) {
         });
     });
 
-    // Seletor do botão e dropdown do menu
-    const workflowMenuBtn = document.querySelector('.workflow-menu-btn');
-    const workflowMenuDropdown = document.querySelector('.workflow-menu-dropdown');
-    
-    // Event listener para abrir/fechar o menu
-    workflowMenuBtn.addEventListener('click', (event) => {
-        event.stopPropagation(); // Impede que o clique feche o menu imediatamente
-        workflowMenuDropdown.classList.toggle('show');
-        
-        // Posiciona o dropdown abaixo do botão
-        const btnRect = workflowMenuBtn.getBoundingClientRect();
-        workflowMenuDropdown.style.top = `${btnRect.bottom}px`;
-        workflowMenuDropdown.style.right = `${window.innerWidth - btnRect.right}px`;
-    });
-
-    // Fecha o menu ao clicar fora dele
-    document.addEventListener('click', () => {
-        workflowMenuDropdown.classList.remove('show');
-    });
-
     // Event listeners para as opções do menu
     const workflowMenuOptions = document.querySelectorAll('.workflow-menu-option');
     workflowMenuOptions.forEach(option => {
@@ -2838,6 +2810,68 @@ function isExpired(dateString) {
         });
     }
 
+    console.log('Inicializando menu do workflow...');
     
+    const workflowMenuBtn = document.querySelector('.workflow-menu-btn');
+    const workflowMenuDropdown = document.querySelector('.workflow-menu-dropdown');
+    
+    if (!workflowMenuBtn || !workflowMenuDropdown) {
+        console.error('Elementos do menu não encontrados:', {
+            btn: workflowMenuBtn,
+            dropdown: workflowMenuDropdown
+        });
+        return;
+    }
+
+    // Event listener para abrir/fechar o menu
+    workflowMenuBtn.addEventListener('click', (event) => {
+        console.log('Clique no botão do menu');
+        event.stopPropagation();
+        
+        // Fecha outros menus primeiro
+        document.querySelectorAll('.workflow-menu-dropdown.show').forEach(menu => {
+            if (menu !== workflowMenuDropdown) {
+                menu.classList.remove('show');
+            }
+        });
+        
+        // Toggle do menu atual
+        workflowMenuDropdown.classList.toggle('show');
+        
+        // Posiciona o dropdown
+        if (workflowMenuDropdown.classList.contains('show')) {
+            const btnRect = workflowMenuBtn.getBoundingClientRect();
+            workflowMenuDropdown.style.top = `${btnRect.bottom}px`;
+            workflowMenuDropdown.style.right = `${window.innerWidth - btnRect.right}px`;
+        }
+    });
+
+    // Fecha o menu ao clicar fora
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.workflow-menu')) {
+            console.log('Clique fora do menu - fechando');
+            workflowMenuDropdown.classList.remove('show');
+        }
+    });
+
+    // Adicione este listener para fechar os menus dos cards
+    document.addEventListener('click', function(e) {
+        // Se o clique não foi no botão do menu do card nem dentro do menu do card
+        if (!e.target.matches('.card-menu-trigger') && !e.target.closest('.card-menu')) {
+            // Fecha todos os menus de cards abertos
+            document.querySelectorAll('.card-menu.show').forEach(menu => {
+                menu.classList.remove('show');
+                menu.style.display = 'none'; // Adiciona esta linha para garantir que o menu fique oculto
+                console.log('Menu fechado:', menu);
+            });
+        }
+        
+        // Mantém o código existente para fechar os menus das listas
+        if (!e.target.matches('.list-menu-btn') && !e.target.closest('.list-menu-dropdown')) {
+            document.querySelectorAll('.list-menu-dropdown').forEach(menu => {
+                menu.style.display = 'none';
+            });
+        }
+    });
 
     });
