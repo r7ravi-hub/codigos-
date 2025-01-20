@@ -1,0 +1,1381 @@
+<?php
+date_default_timezone_set('Etc/GMT+3');
+ob_start();
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+
+// Log para debug
+error_log('Request Headers: ' . print_r(getallheaders(), true));
+error_log('Request Method: ' . $_SERVER['REQUEST_METHOD']);
+error_log('Request URI: ' . $_SERVER['REQUEST_URI']);
+
+// Verifica se é uma requisição AJAX/API de várias formas possíveis
+
+$isApiRequest = (
+    !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && 
+    strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest'
+) || (
+    isset($_GET['action']) || 
+    isset($_POST['action'])
+    
+) || (
+    strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false
+);
+
+error_log('Is API Request: ' . ($isApiRequest ? 'true' : 'false'));
+
+// Define o content type como JSON para requisições API
+if ($isApiRequest) {
+    header('Content-Type: application/json');
+    
+    error_log('Set Content-Type to application/json');
+}
+
+// Adicione a função aqui, logo após as linhas acima
+function getWorkflowLists($pdo, $workflowId) {
+    // Primeiro, busca todas as listas
+    $stmt = $pdo->prepare("
+        SELECT * FROM workflow_listas 
+        WHERE workflow_id = ? 
+        AND status = 'ativo' 
+        ORDER BY ordem ASC
+    ");
+    $stmt->execute([$workflowId]);
+    $lists = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+
+    // Para cada lista, busca seus cards e subcards
+    foreach ($lists as &$list) {
+        $stmt = $pdo->prepare("
+            SELECT c.*, 
+                   (SELECT COUNT(*) 
+                    FROM workflow_cards sc 
+                    WHERE sc.parent_id = c.id 
+                    AND sc.status = 'ativo') as subcard_count
+            FROM workflow_cards c
+            WHERE c.lista_id = ? 
+            AND c.status = 'ativo'
+            ORDER BY 
+                CASE WHEN c.parent_id IS NULL THEN 0 ELSE 1 END,
+                c.parent_id,
+                c.ordem ASC
+        ");
+        $stmt->execute([$list['id']]);
+        $cards = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Organiza cards e subcards em uma estrutura hierárquica
+        $organizedCards = [];
+        $subcards = [];
+
+        foreach ($cards as $card) {
+            if ($card['parent_id'] === null) {
+                $card['subcards'] = [];
+                $organizedCards[$card['id']] = $card;
+            } else {
+                $subcards[] = $card;
+            }
+        }
+
+        // Adiciona subcards aos seus respectivos cards pais
+        foreach ($subcards as $subcard) {
+            if (isset($organizedCards[$subcard['parent_id']])) {
+                $organizedCards[$subcard['parent_id']]['subcards'][] = $subcard;
+            }
+        }
+
+        $list['cards'] = array_values($organizedCards);
+    }
+
+    return $lists;
+}
+
+// Função para verificar se é uma requisição AJAX
+function isAjaxRequest() {
+    return !empty($_SERVER['HTTP_X_REQUESTED_WITH']) || 
+           !empty($_GET['action']) || 
+           !empty($_POST['action']);
+}
+
+function validateCardOperation($pdo, $cardId, $operationType = 'move') {
+    $stmt = $pdo->prepare("
+        SELECT c.id, c.parent_id, c.lista_id,
+               wl.workflow_id
+        FROM workflow_cards c
+        JOIN workflow_listas wl ON wl.id = c.lista_id
+        WHERE c.id = ? AND c.status = 'ativo'
+    ");
+    $stmt->execute([$cardId]);
+    $card = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$card) {
+        throw new Exception("Card não encontrado");
+    }
+
+    // Validação específica para movimentação
+    if ($operationType === 'move') {
+        // Se for subcard, não pode ser movido para lista
+        if ($card['parent_id'] !== null) {
+            throw new Exception("Subcards não podem ser movidos diretamente para listas");
+        }
+    }
+
+    return $card;
+}
+
+try {
+    include_once "../includes/criptografa.php";
+    include_once '../includes/pdo.php';
+
+    // Verificações de login
+    if (!isset($_COOKIE["RAVISTIME"]) || !isset($_COOKIE["RAVISPASS"])) {
+        if ($isApiRequest) {
+            echo json_encode(['success' => false, 'message' => 'Não autorizado']);
+            exit;
+        }
+        header("Location: https://raviads.com.br/index.php?logar");
+        exit();
+    }
+
+    $userCODE = substr(substr($_COOKIE["RAVISTIME"], 3), 0, -3);
+    $userID = decode5t($_COOKIE["RAVISPASS"]);
+
+    if($userCODE != $userID){
+        if ($isApiRequest) {
+            echo json_encode(['success' => false, 'message' => 'Sessão inválida']);
+            exit;
+        }
+        setcookie("RAVISTIME", "", time()-3600);
+        setcookie("RAVISPASS", "null", time()-3600);
+        header("Location: index.php");
+        exit();
+    }
+
+    // Trata todas as requisições API
+    if ($isApiRequest) {
+        error_log('Processing API request');
+        
+        if(isset($_GET['action'])) {
+            error_log('GET Action: ' . $_GET['action']);
+            
+            switch($_GET['action']) {
+                case 'get_workflow_lists':
+                    try {
+                        $workflow_id = filter_input(INPUT_GET, 'workflow_id', FILTER_SANITIZE_NUMBER_INT);
+                        error_log('Getting lists for workflow: ' . $workflow_id);
+                        
+                        // Verifica se o workflow pertence ao usuário
+                        $stmt = $pdo->prepare("
+                            SELECT id 
+                            FROM workflow 
+                            WHERE id = ? AND usuarios_id = ? AND status = 'ativo'
+                        ");
+                        $stmt->execute([$workflow_id, $userID]);
+                        
+                        if (!$stmt->fetch()) {
+                            throw new Exception("Workflow não encontrado ou sem permissão");
+                        }
+                        
+                        $lists = getWorkflowLists($pdo, $workflow_id);
+                        
+                        $response = json_encode([
+                            'success' => true,
+                            'lists' => $lists
+                        ]);
+                        error_log('Response: ' . $response);
+                        echo $response;
+                        exit;
+                    } catch (Exception $e) {
+                        error_log('Error: ' . $e->getMessage());
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                        exit;
+                    }
+                    break;
+
+                case 'get_lists':
+                    try {
+                        $workflow_id = filter_input(INPUT_GET, 'workflow_id', FILTER_SANITIZE_NUMBER_INT);
+                        
+                        if(empty($workflow_id)) {
+                            throw new Exception("Workflow não selecionado");
+                        }
+
+                        
+                        $lists = getWorkflowLists($pdo, $workflow_id);
+                        
+                        echo json_encode([
+                            'success' => true,
+                            'lists' => $lists
+                        ]);
+                    } catch (Exception $e) {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                    }
+                    break;
+                    
+                case 'get_card_list':
+                    try {
+                        $card_id = filter_input(INPUT_GET, 'card_id', FILTER_SANITIZE_NUMBER_INT);
+                        
+                        // Adiciona verificação de permissão
+                        $stmt = $pdo->prepare("
+                            SELECT wc.lista_id 
+                            FROM workflow_cards wc
+                            JOIN workflow_listas wl ON wl.id = wc.lista_id
+                            JOIN workflow w ON w.id = wl.workflow_id
+                            WHERE wc.id = ? AND w.usuarios_id = ?
+                        ");
+                        $stmt->execute([$card_id, $userID]);
+                        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                        
+                        if ($result) {
+                            echo json_encode([
+                                'success' => true,
+                                'lista_id' => $result['lista_id']
+                            ]);
+                        } else {
+                            throw new Exception("Card não encontrado ou sem permissão");
+                        }
+                    } catch (Exception $e) {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                    }
+                    break;
+                    
+                case 'get_list_cards':
+                    try {
+                        $lista_id = filter_input(INPUT_GET, 'lista_id', FILTER_SANITIZE_NUMBER_INT);
+                        
+                        if (empty($lista_id)) {
+                            throw new Exception("Lista não especificada");
+                        }
+
+                        // Primeiro, busca todos os cards principais (sem parent_id)
+                        $stmt = $pdo->prepare("
+                            SELECT c.*, 
+                                   (SELECT COUNT(*) 
+                                    FROM workflow_cards sc 
+                                    WHERE sc.parent_id = c.id 
+                                    AND sc.status = 'ativo') as subcard_count
+                            FROM workflow_cards c
+                            WHERE c.lista_id = ? 
+                            AND c.parent_id IS NULL
+                            AND c.status = 'ativo'
+                            ORDER BY c.ordem ASC
+                        ");
+                        $stmt->execute([$lista_id]);
+                        $mainCards = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                        // Para cada card principal, busca seus subcards
+                        foreach ($mainCards as &$card) {
+                            $stmt = $pdo->prepare("
+                                SELECT * 
+                                FROM workflow_cards 
+                                WHERE parent_id = ? 
+                                AND status = 'ativo'
+                                ORDER BY ordem ASC
+                            ");
+                            $stmt->execute([$card['id']]);
+                            $card['subcards'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                        }
+
+                        echo json_encode([
+                            'success' => true, 
+                            'cards' => $mainCards
+                        ]);
+                        exit();
+                    } catch (Exception $e) {
+                        echo json_encode([
+                            'success' => false, 
+                            'message' => $e->getMessage()
+                        ]);
+                        exit();
+                    }
+                    break;
+
+                case 'get_card_details':
+                    try {
+                        $cardId = filter_input(INPUT_GET, 'card_id', FILTER_SANITIZE_NUMBER_INT);
+                        
+                        $stmt = $pdo->prepare("
+                            SELECT id, nome, descricao 
+                            FROM workflow_cards 
+                            WHERE id = ? 
+                            AND status = 'ativo'
+                        ");
+                        
+                        $stmt->execute([$cardId]);
+                        $card = $stmt->fetch(PDO::FETCH_ASSOC);
+                        
+                        if ($card) {
+                            echo json_encode([
+                                'success' => true,
+                                'card' => $card
+                            ]);
+                        } else {
+                            throw new Exception("Card não encontrado");
+                        }
+                    } catch (Exception $e) {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                    }
+                    exit;
+                    break;
+
+                case 'get_card':
+                    try {
+                        $cardId = $_GET['card_id'];
+                        
+                        $stmt = $pdo->prepare("
+                            SELECT 
+                                id,
+                                lista_id,
+                                nome,
+                                descricao,
+                                ordem,
+                                status,
+                                data_criacao,
+                                data_atualizacao,
+                                timer_end,
+                                timer_active,
+                                timer_sound,
+                                date_end,
+                                date_active,
+                                date_sound
+                            FROM workflow_cards 
+                            WHERE id = ?
+                        ");
+                        
+                        $stmt->execute([$cardId]);
+                        $card = $stmt->fetch(PDO::FETCH_ASSOC);
+                        
+                        if ($card) {
+                            // Debug dos dados
+                            error_log('Dados do card: ' . print_r($card, true));
+                            
+                            echo json_encode([
+                                'success' => true,
+                                'card' => $card
+                            ]);
+                        } else {
+                            echo json_encode([
+                                'success' => false,
+                                'message' => 'Card não encontrado'
+                            ]);
+                        }
+                        
+                    } catch (Exception $e) {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                    }
+                    exit;
+                    break;
+            }
+            exit;
+        }
+
+        if(isset($_POST['action'])) {
+            error_log('POST Action: ' . $_POST['action']);
+            switch($_POST['action']) {
+                case 'criar_workflow':
+                    $nome = filter_input(INPUT_POST, 'nome', FILTER_SANITIZE_STRING);
+                    
+                    if(empty($nome)) {
+                        throw new Exception("Nome do workflow é obrigatório");
+                    }
+
+                    $stmt = $pdo->prepare("INSERT INTO workflow (usuarios_id, nome) VALUES (?, ?)");
+                    $result = $stmt->execute([$userID, $nome]);
+                    
+                    if ($result) {
+                        echo json_encode([
+                            'success' => true,
+                            'workflowId' => $pdo->lastInsertId(),
+                            'nome' => $nome
+                        ]);
+                    } else {
+                        throw new Exception("Erro ao criar workflow");
+                    }
+                    break;
+                case 'criar_lista':
+                    $nome = filter_input(INPUT_POST, 'nome', FILTER_SANITIZE_STRING);
+                    $workflow_id = filter_input(INPUT_POST, 'workflow_id', FILTER_SANITIZE_NUMBER_INT);
+                    
+                    if(empty($nome)) {
+                        throw new Exception("Nome da lista é obrigatório");
+                    }
+                    
+                    if(empty($workflow_id)) {
+                        throw new Exception("Workflow não selecionado");
+                    }
+
+                    // Verifica se o workflow existe e pertence ao usuário
+                    $stmt = $pdo->prepare("SELECT id FROM workflow WHERE id = ? AND usuarios_id = ? AND status = 'ativo'");
+                    $stmt->execute([$workflow_id, $userID]);
+                    if (!$stmt->fetch()) {
+                        throw new Exception("Workflow inválido");
+                    }
+
+                    // Pega a maior ordem existente para este workflow
+                    $stmt = $pdo->prepare("SELECT COALESCE(MAX(ordem), 0) as max_ordem FROM workflow_listas WHERE workflow_id = ?");
+                    $stmt->execute([$workflow_id]);
+                    $ordem = $stmt->fetch()['max_ordem'] + 1;
+
+                    // Insere a nova lista
+                    $stmt = $pdo->prepare("INSERT INTO workflow_listas (workflow_id, nome, ordem) VALUES (?, ?, ?)");
+                    $result = $stmt->execute([$workflow_id, $nome, $ordem]);
+                    
+                    if ($result) {
+                        echo json_encode([
+                            'success' => true,
+                            'listaId' => $pdo->lastInsertId(),
+                            'nome' => $nome
+                        ]);
+                    } else {
+                        throw new Exception("Erro ao criar lista");
+                    }
+                    break;
+                case 'create_card':
+                    try {
+                        $nome = filter_input(INPUT_POST, 'nome', FILTER_SANITIZE_STRING);
+                        $lista_id = filter_input(INPUT_POST, 'lista_id', FILTER_SANITIZE_NUMBER_INT);
+                        $parent_id = filter_input(INPUT_POST, 'parent_id', FILTER_SANITIZE_NUMBER_INT);
+                        
+                        if (empty($lista_id)) {
+                            throw new Exception("Lista não selecionada");
+                        }
+                        
+                        // Pegar a maior ordem atual dos cards na lista
+                        $stmt = $pdo->prepare("
+                            SELECT COALESCE(MAX(ordem), 0) as max_ordem 
+                            FROM workflow_cards 
+                            WHERE lista_id = ? 
+                            AND status = 'ativo'
+                            AND (parent_id IS NULL OR parent_id = ?)
+                        ");
+                        $stmt->execute([$lista_id, $parent_id]);
+                        $result = $stmt->fetch();
+                        $nova_ordem = $result['max_ordem'] + 1;
+                        
+                        $stmt = $pdo->prepare("
+                            INSERT INTO workflow_cards 
+                            (nome, lista_id, parent_id, ordem, status, data_criacao) 
+                            VALUES (?, ?, ?, ?, 'ativo', NOW())
+                        ");
+                        
+                        if($stmt->execute([$nome, $lista_id, $parent_id, $nova_ordem])) {
+                            $cardId = $pdo->lastInsertId();
+                            echo json_encode(['success' => true, 'card_id' => $cardId]);
+                            exit();
+                        }
+                        
+                        throw new Exception("Erro ao criar card");
+                    } catch (Exception $e) {
+                        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+                        exit();
+                    }
+                    break;
+                case 'update_lists_order':
+                    try {
+                        if (!isset($_POST['lists_order'])) {
+                            throw new Exception("Dados não fornecidos");
+                        }
+
+                        $listsOrder = json_decode($_POST['lists_order'], true);
+                        
+                        if (!is_array($listsOrder)) {
+                            throw new Exception("Dados inválidos");
+                        }
+
+                        $pdo->beginTransaction();
+
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_listas 
+                            SET ordem = ?, 
+                                data_atualizacao = NOW() 
+                            WHERE id = ? 
+                            AND status = 'ativo'
+                        ");
+
+                        foreach ($listsOrder as $list) {
+                            if (!isset($list['id']) || !isset($list['ordem'])) {
+                                throw new Exception("Dados incompletos");
+                            }
+                            $stmt->execute([$list['ordem'], $list['id']]);
+                        }
+
+                        $pdo->commit();
+                        
+                        echo json_encode(['success' => true]);
+                        exit();
+                    } catch (Exception $e) {
+                        if ($pdo->inTransaction()) {
+                            $pdo->rollBack();
+                        }
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                        exit();
+                    }
+                    break;
+                case 'toggle_card_status':
+                    try {
+                        $card_id = filter_input(INPUT_POST, 'card_id', FILTER_SANITIZE_NUMBER_INT);
+                        
+                        if (empty($card_id)) {
+                            throw new Exception("Card não especificado");
+                        }
+
+                        // Primeiro, pega o status atual do card
+                        
+                        $stmt = $pdo->prepare("
+                            SELECT concluida 
+                            FROM workflow_cards 
+                            WHERE id = ? 
+                            AND status = 'ativo'
+                        ");
+                        $stmt->execute([$card_id]);
+                        $card = $stmt->fetch();
+
+                        if (!$card) {
+                            throw new Exception("Card não encontrado");
+                        }
+
+                        // Inverte o status
+                        $novo_status = $card['concluida'] ? 0 : 1;
+
+                        // Atualiza o status
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_cards 
+                            SET concluida = ?,
+                                data_atualizacao = NOW() 
+                            WHERE id = ? 
+                            AND status = 'ativo'
+                        ");
+                        
+                        if ($stmt->execute([$novo_status, $card_id])) {
+                            echo json_encode(['success' => true, 'concluida' => $novo_status]);
+                            exit();
+                        }
+
+                        throw new Exception("Erro ao atualizar status");
+                    } catch (Exception $e) {
+                        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+                        exit();
+                    }
+                    break;
+                case 'create_list':
+                    try {
+                        $nome = filter_input(INPUT_POST, 'nome', FILTER_SANITIZE_STRING);
+                        $workflow_id = filter_input(INPUT_POST, 'workflow_id', FILTER_SANITIZE_NUMBER_INT);
+
+                        if (empty($nome) || empty($workflow_id)) {
+                            throw new Exception("Nome da lista e workflow são obrigatórios");
+                        }
+
+                        // Verifica se o workflow pertence ao usuário
+                        $stmt = $pdo->prepare("
+                            SELECT id 
+                            FROM workflow 
+                            WHERE id = ? AND usuarios_id = ? AND status = 'ativo'
+                        ");
+                        $stmt->execute([$workflow_id, $userID]);
+                        
+                        if (!$stmt->fetch()) {
+                            throw new Exception("Workflow não encontrado ou sem permissão");
+                        }
+
+                        // Pega a última ordem
+                        $stmt = $pdo->prepare("
+                            SELECT COALESCE(MAX(ordem), 0) as ultima_ordem 
+                            FROM workflow_listas 
+                            WHERE workflow_id = ? AND status = 'ativo'
+                        ");
+                        $stmt->execute([$workflow_id]);
+                        $ultima_ordem = $stmt->fetch(PDO::FETCH_ASSOC)['ultima_ordem'];
+
+                        // Insere a nova lista
+                        $stmt = $pdo->prepare("
+                            INSERT INTO workflow_listas 
+                            (nome, workflow_id, ordem, status, data_criacao) 
+                            VALUES (?, ?, ?, 'ativo', NOW())
+                        ");
+                        
+                        if ($stmt->execute([$nome, $workflow_id, $ultima_ordem + 1])) {
+                            echo json_encode([
+                                'success' => true,
+                                'message' => 'Lista criada com sucesso',
+                                'list_id' => $pdo->lastInsertId()
+                            ]);
+                            exit;
+                        }
+
+                        throw new Exception("Erro ao criar lista");
+                    } catch (Exception $e) {
+                        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+                        exit;
+                    }
+                    break;
+                case 'update_card_position':
+                    try {
+                        $cardId = filter_input(INPUT_POST, 'card_id', FILTER_SANITIZE_NUMBER_INT);
+                        $newListId = filter_input(INPUT_POST, 'lista_id', FILTER_SANITIZE_NUMBER_INT);
+                        $newOrdem = filter_input(INPUT_POST, 'ordem', FILTER_SANITIZE_NUMBER_INT);
+                        
+                        $pdo->beginTransaction();
+
+                        // Atualiza a ordem dos cards na lista de destino
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_cards 
+                            SET ordem = ordem + 1,
+                                data_atualizacao = NOW()
+                            WHERE lista_id = ? 
+                            AND ordem >= ? 
+                            AND id != ?
+                            AND status = 'ativo'
+                        ");
+                        $stmt->execute([$newListId, $newOrdem, $cardId]);
+
+                        // Atualiza o card principal
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_cards 
+                            SET lista_id = ?,
+                                ordem = ?,
+                                data_atualizacao = NOW()
+                            WHERE id = ?
+                            AND status = 'ativo'
+                        ");
+                        $stmt->execute([$newListId, $newOrdem, $cardId]);
+
+                        // Atualiza todos os subcards vinculados
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_cards 
+                            SET lista_id = ?,
+                                data_atualizacao = NOW()
+                            WHERE parent_id = ?
+                            AND status = 'ativo'
+                        ");
+                        $stmt->execute([$newListId, $cardId]);
+
+                        $pdo->commit();
+                        echo json_encode(['success' => true]);
+                    } catch (Exception $e) {
+                        $pdo->rollBack();
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                    }
+                    exit;
+                    break;
+                case 'update_cards_order':
+                    header('Content-Type: application/json');
+                    
+                    if (!isset($_POST['cards_order'])) {
+                        echo json_encode(['success' => false, 'message' => 'Ordem dos cards não fornecida']);
+                        exit;
+                    }
+
+                    try {
+                        $cardsOrder = json_decode($_POST['cards_order'], true);
+                        
+                        if (!is_array($cardsOrder)) {
+                            throw new Exception('Formato inválido para ordem dos cards');
+                        }
+
+                        $pdo->beginTransaction();
+
+                        foreach ($cardsOrder as $card) {
+                            // Atualiza o card pai
+                            $stmt = $pdo->prepare("
+                                UPDATE workflow_cards 
+                                SET ordem = ?, 
+                                    lista_id = ?,
+                                    data_atualizacao = NOW()
+                                WHERE id = ?
+                            ");
+                            $stmt->execute([$card['ordem'], $card['lista_id'], $card['id']]);
+
+                            // Atualiza todos os subcards (mantém a mesma ordem relativa)
+                            $stmt = $pdo->prepare("
+                                UPDATE workflow_cards 
+                                SET lista_id = ?
+                                WHERE parent_id = ?
+                            ");
+                            $stmt->execute([$card['lista_id'], $card['id']]);
+                        }
+
+                        $pdo->commit();
+                        echo json_encode(['success' => true]);
+
+                    } catch (Exception $e) {
+                        $pdo->rollBack();
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                    }
+                    exit;
+                case 'update_subcard_order':
+                    try {
+                        // Limpa qualquer output anterior
+                        ob_clean();
+                        
+                        $pdo->beginTransaction();
+                        
+                        $subcardsOrder = json_decode($_POST['subcards_order'], true);
+                        if ($subcardsOrder === null) {
+                            throw new Exception('JSON inválido: ' . json_last_error_msg());
+                        }
+
+                        // Debug
+                        error_log('Dados recebidos: ' . print_r($subcardsOrder, true));
+
+                        // Primeiro, reseta as ordens para evitar conflitos
+                        $parentId = $subcardsOrder[0]['parent_id'];
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_cards 
+                            SET ordem = ordem + 1000
+                            WHERE parent_id = :parent_id
+                            AND status = 'ativo'
+                        ");
+                        $stmt->execute([':parent_id' => $parentId]);
+
+                        // Depois atualiza com as novas ordens
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_cards 
+                            SET ordem = :ordem,
+                                parent_id = :parent_id,
+                                lista_id = :lista_id,
+                                data_atualizacao = NOW()
+                            WHERE id = :id
+                            AND status = 'ativo'
+                        ");
+
+                        foreach ($subcardsOrder as $subcard) {
+                            $stmt->execute([
+                                ':ordem' => $subcard['ordem'],
+                                ':parent_id' => $subcard['parent_id'],
+                                ':lista_id' => $subcard['lista_id'],
+                                ':id' => $subcard['id']
+                            ]);
+                        }
+
+                        $pdo->commit();
+                        
+                        // Garante que só enviamos JSON limpo
+                        header('Content-Type: application/json');
+                        echo json_encode(['success' => true]);
+                        
+                    } catch (Exception $e) {
+                        $pdo->rollBack();
+                        header('Content-Type: application/json');
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                    }
+                    exit;
+                    break;
+                case 'move_subcard':
+                    if (!isset($_POST['subcard_id'], $_POST['parent_card_id'], $_POST['lista_id'], $_POST['posicao'])) {
+                        echo json_encode(['success' => false, 'message' => 'Parâmetros incompletos']);
+                        exit;
+                    }
+
+                    $subcardId = $_POST['subcard_id'];
+                    $parentCardId = $_POST['parent_card_id'];
+                    $listaId = $_POST['lista_id'];
+                    $posicao = $_POST['posicao'];
+
+                    try {
+                        // Atualiza a posição do subcard
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_cards 
+                            SET parent_id = ?, 
+                                lista_id = ?,
+                                ordem = ? 
+                            WHERE id = ?
+                        ");
+                        
+                        $stmt->execute([$parentCardId, $listaId, $posicao, $subcardId]);
+
+                        // Reordena outros subcards do mesmo parent
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_cards 
+                            SET ordem = ordem + 1 
+                            WHERE parent_id = ? 
+                            AND ordem >= ? 
+                            AND id != ?
+                        ");
+                        
+                        $stmt->execute([$parentCardId, $posicao, $subcardId]);
+
+                        echo json_encode(['success' => true]);
+                    } catch (Exception $e) {
+                        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+                    }
+                    exit;
+                    break;
+                case 'toggle_card_complete':
+                    try {
+                        $cardId = filter_input(INPUT_POST, 'card_id', FILTER_SANITIZE_NUMBER_INT);
+                        $complete = filter_input(INPUT_POST, 'complete', FILTER_SANITIZE_NUMBER_INT);
+                        
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_cards 
+                            SET concluida = ?,
+                                data_atualizacao = NOW()
+                            WHERE id = ?
+                            AND status = 'ativo'
+                        ");
+                        
+                        $stmt->execute([$complete, $cardId]);
+                        
+                        echo json_encode(['success' => true]);
+                    } catch (Exception $e) {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                    }
+                    exit;
+                    break;
+                case 'delete_card':
+                    try {
+                        $cardId = filter_input(INPUT_POST, 'card_id', FILTER_SANITIZE_NUMBER_INT);
+                        
+                        // Atualiza o status do card e seus subcards para inativo
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_cards 
+                            SET status = 'inativo',
+                                data_atualizacao = NOW()
+                            WHERE (id = ? OR parent_id = ?)
+                            AND status = 'ativo'
+                        ");
+                        
+                        $stmt->execute([$cardId, $cardId]);
+                        
+                        echo json_encode(['success' => true]);
+                    } catch (Exception $e) {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                    }
+                    exit;
+                    break;
+                case 'update_card':
+                    try {
+                        $cardId = filter_input(INPUT_POST, 'card_id', FILTER_SANITIZE_NUMBER_INT);
+                        $nome = filter_input(INPUT_POST, 'nome', FILTER_SANITIZE_STRING);
+                        $descricao = filter_input(INPUT_POST, 'descricao', FILTER_SANITIZE_STRING);
+                        
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_cards 
+                            SET nome = ?,
+                                descricao = ?,
+                                data_atualizacao = NOW()
+                            WHERE id = ? 
+                            AND status = 'ativo'
+                        ");
+                        
+                        $stmt->execute([$nome, $descricao, $cardId]);
+                        
+                        if ($stmt->rowCount() > 0) {
+                            echo json_encode(['success' => true]);
+                        } else {
+                            throw new Exception("Nenhum card foi atualizado");
+                        }
+                    } catch (Exception $e) {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                    }
+                    exit;
+                    break;
+                case 'delete_list':
+                    try {
+                        $listId = filter_input(INPUT_POST, 'list_id', FILTER_SANITIZE_NUMBER_INT);
+                        
+                        // Verifica se a lista pertence ao usuário
+                        $stmt = $pdo->prepare("
+                            SELECT wl.id 
+                            FROM workflow_listas wl
+                            JOIN workflow w ON w.id = wl.workflow_id
+                            WHERE wl.id = ? AND w.usuarios_id = ?
+                            AND wl.status = 'ativo'
+                        ");
+                        $stmt->execute([$listId, $userID]);
+                        
+                        if (!$stmt->fetch()) {
+                            throw new Exception("Lista não encontrada ou sem permissão");
+                        }
+                        
+                        // Atualiza o status da lista para inativo
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_listas 
+                            SET status = 'inativo',
+                                data_atualizacao = NOW()
+                            WHERE id = ?
+                        ");
+                        
+                        $stmt->execute([$listId]);
+                        
+                        echo json_encode(['success' => true]);
+                    } catch (Exception $e) {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                    }
+                    break;
+                case 'update_card_timer':
+                    try {
+                        $cardId = $_POST['card_id'];
+                        $timer_minutes = $_POST['timer_minutes'];
+                        $timer_active = $_POST['timer_active'] === 'true' ? 1 : 0;
+                        $timer_sound = $_POST['timer_sound'] === 'true' ? 1 : 0;
+
+                        $timer_end = null;
+                        if ($timer_active && $timer_minutes > 0) {
+                            $timer_end = date('Y-m-d H:i:s', strtotime("+{$timer_minutes} minutes"));
+                        }
+
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_cards 
+                            SET timer_end = ?,
+                                timer_active = ?,
+                                timer_sound = ?
+                            WHERE id = ?
+                        ");
+
+                        $success = $stmt->execute([$timer_end, $timer_active, $timer_sound, $cardId]);
+                        
+                        echo json_encode([
+                            'success' => $success,
+                            'timer_end' => $timer_end
+                        ]);
+                        
+                    } catch (Exception $e) {
+                        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+                    }
+                    exit;
+                    break;
+
+                case 'update_card_date':
+                    try {
+                        $cardId = $_POST['card_id'];
+                        $date_end = $_POST['date_end'];
+                        $date_active = $_POST['date_active'] === 'true' ? 1 : 0;
+                        $date_sound = $_POST['date_sound'] === 'true' ? 1 : 0;
+
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_cards 
+                            SET date_end = ?,
+                                date_active = ?,
+                                date_sound = ?
+                            WHERE id = ?
+                        ");
+
+                        $success = $stmt->execute([$date_end, $date_active, $date_sound, $cardId]);
+                        
+                        echo json_encode([
+                            'success' => $success,
+                            'date_end' => $date_end
+                        ]);
+                        
+                    } catch (Exception $e) {
+                        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+                    }
+                    exit;
+                    break;
+                case 'create_workflow':
+                    try {
+                        $nome = filter_input(INPUT_POST, 'nome', FILTER_SANITIZE_STRING);
+                        
+                        if (empty($nome)) {
+                            throw new Exception("Nome do workflow é obrigatório");
+                        }
+
+                        $stmt = $pdo->prepare("
+                            INSERT INTO workflow (usuarios_id, nome, status, data_criacao, data_atualizacao)
+                            VALUES (?, ?, 'ativo', NOW(), NOW())
+                        ");
+                        
+                        $success = $stmt->execute([$userID, $nome]);
+                        
+                        if ($success) {
+                            echo json_encode([
+                                'success' => true,
+                                'message' => 'Workflow criado com sucesso'
+                            ]);
+                        } else {
+                            throw new Exception("Erro ao criar workflow");
+                        }
+                        
+                    } catch (Exception $e) {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                    }
+                    exit;
+                    break;
+                case 'update_card_info':
+                    try {
+                        // Garante que nenhum output foi enviado antes
+                        ob_clean();
+                        
+                        $cardId = filter_input(INPUT_POST, 'card_id', FILTER_SANITIZE_NUMBER_INT);
+                        $nome = filter_input(INPUT_POST, 'nome', FILTER_SANITIZE_STRING);
+                        $descricao = filter_input(INPUT_POST, 'descricao', FILTER_SANITIZE_STRING);
+
+                        // Valida os dados
+                        if (empty($cardId) || empty($nome)) {
+                            throw new Exception("Dados inválidos");
+                        }
+
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_cards 
+                            SET nome = ?,
+                                descricao = ?,
+                                data_atualizacao = NOW()
+                            WHERE id = ?
+                        ");
+
+                        $success = $stmt->execute([$nome, $descricao, $cardId]);
+                        
+                        header('Content-Type: application/json');
+                        echo json_encode([
+                            'success' => $success,
+                            'message' => $success ? 'Card atualizado com sucesso' : 'Erro ao atualizar card'
+                        ]);
+                        exit;
+                        
+                    } catch (Exception $e) {
+                        header('Content-Type: application/json');
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                        exit;
+                    }
+                    break;
+                case 'update_list':
+                    try {
+                        $listId = filter_input(INPUT_POST, 'list_id', FILTER_SANITIZE_NUMBER_INT);
+                        $nome = filter_input(INPUT_POST, 'nome', FILTER_SANITIZE_STRING);
+
+                        if (!$listId || !$nome) {
+                            throw new Exception("Dados inválidos");
+                        }
+
+                        // Verifica se a lista pertence ao usuário
+                        $stmt = $pdo->prepare("
+                            SELECT wl.id 
+                            FROM workflow_listas wl
+                            JOIN workflow w ON w.id = wl.workflow_id
+                            WHERE wl.id = ? AND w.usuarios_id = ?
+                        ");
+                        $stmt->execute([$listId, $userID]);
+
+                        if (!$stmt->fetch()) {
+                            throw new Exception("Lista não encontrada ou sem permissão");
+                        }
+
+                        // Atualiza o nome da lista
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_listas 
+                            SET nome = ?, 
+                                data_atualizacao = NOW()
+                            WHERE id = ?
+                        ");
+                        $stmt->execute([$nome, $listId]);
+
+                        echo json_encode(['success' => true]);
+                        exit;
+
+                    } catch (Exception $e) {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                        exit;
+                    }
+                    break;
+                case 'update_subcard_order':
+                    try {
+                        if (!isset($_POST['parent_id']) || !isset($_POST['order'])) {
+                            throw new Exception("Dados incompletos para atualização da ordem");
+                        }
+
+                        $parentId = filter_input(INPUT_POST, 'parent_id', FILTER_SANITIZE_NUMBER_INT);
+                        $orderData = json_decode($_POST['order'], true);
+
+                        // Verifica se o card pai pertence ao usuário
+                        $stmt = $pdo->prepare("
+                            SELECT c.id 
+                            FROM workflow_cards c
+                            JOIN workflow_listas wl ON wl.id = c.lista_id
+                            JOIN workflow w ON w.id = wl.workflow_id
+                            WHERE c.id = ? AND w.usuarios_id = ?
+                            AND c.status = 'ativo'
+                        ");
+                        $stmt->execute([$parentId, $userID]);
+                        
+                        if (!$stmt->fetch()) {
+                            throw new Exception("Card pai não encontrado ou sem permissão");
+                        }
+
+                        // Inicia transação
+                        $pdo->beginTransaction();
+
+                        // Atualiza a ordem de cada subcard
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow_cards 
+                            SET ordem = :ordem,
+                                data_atualizacao = NOW()
+                            WHERE id = :id 
+                            AND parent_id = :parent_id 
+                            AND status = 'ativo'
+                        ");
+
+                        foreach ($orderData as $item) {
+                            $stmt->execute([
+                                ':ordem' => $item['ordem'],
+                                ':id' => $item['id'],
+                                ':parent_id' => $parentId
+                            ]);
+                        }
+
+                        $pdo->commit();
+                        echo json_encode(['success' => true]);
+                        exit;
+
+                    } catch (Exception $e) {
+                        if ($pdo->inTransaction()) {
+                            $pdo->rollBack();
+                        }
+                        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+                        exit;
+                    }
+                    break;
+            }
+        }
+        
+        error_log('No action found in API request');
+        echo json_encode(['success' => false, 'message' => 'Ação não especificada']);
+        exit;
+    }
+
+    // Se chegou aqui, é uma requisição normal de página
+    error_log('Processing regular page request');
+    
+    // Carrega os dados necessários para a página
+    $stmt = $pdo->prepare("SELECT * FROM workflow WHERE usuarios_id = ? AND status = 'ativo'");
+    $stmt->execute([$userID]);
+    $workflows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $hasWorkflows = !empty($workflows);
+
+    $cssVersion = filemtime('style.css');
+
+} catch (Exception $e) {
+    error_log('Exception caught: ' . $e->getMessage());
+    if ($isApiRequest) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        exit;
+    }
+    die("Erro: " . $e->getMessage());
+}
+?>
+
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meus Workflows</title>
+    <link rel="stylesheet" href="style.css?v=<?php echo $cssVersion; ?>">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body class="workflow-page">
+<?php include_once "../menu/menu.php"; ?>
+    <?php if(!$hasWorkflows): ?>
+        <!-- Tela inicial - Primeiro Workflow -->
+        <div class="first-workflow-container">
+            <div class="workflow-card">
+                <div class="add-icon">+</div>
+                <h2>Crie seu primeiro Workflow</h2>
+                <p>Organize suas tarefas de forma visual e eficiente</p>
+                <button type="button" class="create-btn" onclick="return false;">Criar Workflow</button>
+            </div>
+        </div>
+    <?php else: ?>
+        <!-- Layout principal com barra lateral e área de trabalho -->
+        <div class="app-container">
+            <!-- Barra lateral com workflows -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h2>Meus Projetos</h2>
+                </div>
+                <div class="workflow-list">
+                    <?php foreach($workflows as $workflow): ?>
+                        <div class="workflow-item" data-id="<?php echo $workflow['id']; ?>">
+                            <span class="workflow-name"><?php echo htmlspecialchars($workflow['nome']); ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <div class="sidebar-footer">
+                    <button type="button" class="create-btn" onclick="return false;">+ Criar Novo Workflow</button>
+                </div>
+            </div>
+
+            <!-- Área principal de trabalho -->
+            <div class="main-content">
+                <div class="board-header">
+                    <h2 class="selected-workflow-name">Nome do Workflow</h2>
+                    <div class="workflow-menu">
+                        
+                        <button class="workflow-menu-btn">⋮</button>
+                        <div class="workflow-menu-dropdown">
+                            <div class="workflow-menu-option">Editar</div>
+                            <div class="workflow-menu-option">Apagar</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="board-content">
+                    <div class="lists-container" id="listsContainer">
+                        <?php if($hasWorkflows): ?>
+                            <!-- A renderização das listas será feita via JavaScript -->
+                            <div class="add-list">
+                                <button class="create-list-btn" disabled>+ Adicionar Lista</button>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
+
+    <!-- Modal para criar workflow - Agora disponível em ambos os casos -->
+    <div class="modal" id="createWorkflowModal">
+        <div class="modal-content">
+            <h2>Criar Novo Workflow</h2>
+            <input type="text" id="workflowName" placeholder="Nome do Workflow">
+            <div class="modal-buttons">
+                <button class="cancel-btn">Cancelar</button>
+                <button class="confirm-btn">Criar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal editar workflow -->
+    <div class="modal" id="editWorkflowModal">
+        <div class="modal-content">
+            <h2>Editar Workflow</h2>
+            <input type="text" id="editWorkflowName" placeholder="Nome do Workflow">
+            <div class="modal-buttons">
+                <button class="cancel-btn">Cancelar</button>
+                <button class="confirm-btn">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Adicione este modal junto com o outro modal -->
+    <div class="modal" id="createListModal">
+        <div class="modal-content">
+            <h2>Criar Nova Lista</h2>
+            <input type="text" id="listName" placeholder="Nome da Lista">
+            <div class="modal-buttons">
+                <button class="cancel-btn">Cancelar</button>
+                <button class="confirm-btn">Criar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Adicione este modal junto com os outros -->
+    <div class="modal" id="createCardModal">
+        <div class="modal-content">
+            <h2>Criar Novo Card</h2>
+            <input type="text" id="cardName" placeholder="Nome do Card">
+            <div class="modal-buttons">
+                <button class="cancel-btn">Cancelar</button>
+                <button class="confirm-btn">Criar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Adicione este modal junto com os outros -->
+    <div id="editCardModal" class="modal">
+        <div class="modal-content">
+            <h2>Editar Card</h2>
+            <input type="text" id="editCardName" placeholder="Nome do Card">
+            <textarea id="editCardDescription" placeholder="Descrição"></textarea>
+            
+            <div class="time-controls-container">
+                <div class="timer-section">
+                    <div class="timer-controls">
+                        <input type="number" id="timerMinutes" min="1" max="999" value="30">
+                        <button class="timer-start-btn">▶</button>
+                    </div>
+                    <div class="timer-status">Inativo</div>
+                    <div class="timer-options">
+                        <label>
+                            <input type="checkbox" id="timerSound">
+                            Alerta sonoro
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="date-section">
+                    <div class="date-controls">
+                        <input type="datetime-local" id="dateEnd" placeholder="Data">
+                        <button class="date-start-btn">▶</button>
+                    </div>
+                    <div class="date-status">Inativo</div>
+                    <div class="date-options">
+                        <label>
+                            <input type="checkbox" id="dateSound">
+                            Alerta sonoro
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-buttons">
+                <button class="confirm-btn">Confirmar</button>
+                <button class="cancel-btn">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal editar lista -->
+    <div class="modal" id="editListModal">
+        <div class="modal-content">
+            <h2>Editar Lista</h2>
+            <input type="text" id="editListName" placeholder="Nome da Lista">
+            <div class="modal-buttons">
+                <button class="cancel-btn">Cancelar</button>
+                <button class="confirm-btn">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script src="script.js?v=<?php echo time(); ?>"></script>
+</body>
+</html>
+
