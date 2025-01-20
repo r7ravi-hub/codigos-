@@ -1469,28 +1469,54 @@ function isExpired(dateString) {
 
     // Função de deletar card atualizada
     async function deleteCard(cardId) {
-        if (!confirm('Tem certeza que deseja excluir este card?')) {
-            return;
-        }
-
         console.log('Enviando requisição para deletar card:', cardId);
         
+        // Previne múltiplas chamadas
+        if (deleteCard.isProcessing) {
+            console.log('Já existe uma requisição de delete em andamento');
+            return;
+        }
+        
+        deleteCard.isProcessing = true;
+
         const formData = new FormData();
         formData.append('action', 'delete_card');
         formData.append('card_id', cardId);
 
-        const response = await fetch('index.php', {
+        fetch('index.php', {
             method: 'POST',
             body: formData
+        })
+        .then(response => response.text()) // Primeiro pegamos o texto
+        .then(text => {
+            try {
+                // Pega apenas o primeiro JSON válido da resposta
+                const jsonMatch = text.match(/\{.*?\}/);
+                if (!jsonMatch) {
+                    throw new Error('Resposta inválida do servidor');
+                }
+                return JSON.parse(jsonMatch[0]);
+            } catch (e) {
+                console.error('Erro ao parsear JSON:', e);
+                console.error('Texto recebido:', text);
+                throw new Error('Resposta inválida do servidor');
+            }
+        })
+        .then(data => {
+            if (data.success) {
+                console.log('Card deletado com sucesso');
+                return loadWorkflowLists(selectedWorkflowId);
+            } else {
+                throw new Error(data.message || 'Erro ao deletar card');
+            }
+        })
+        .catch(error => {
+            console.error('Erro ao deletar card:', error);
+            alert('Erro ao deletar card: ' + error.message);
+        })
+        .finally(() => {
+            deleteCard.isProcessing = false;
         });
-
-        const data = await response.json();
-        if (data.success) {
-            console.log('Card deletado com sucesso');
-            await loadWorkflowLists(selectedWorkflowId);
-        } else {
-            throw new Error(data.message || 'Erro ao deletar card');
-        }
     }
 
     // Adicionar após as outras funções
@@ -2815,4 +2841,3 @@ function isExpired(dateString) {
     
 
     });
-
