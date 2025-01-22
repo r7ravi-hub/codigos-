@@ -1173,6 +1173,46 @@ try {
                         exit;
                     }
                     break;
+                case 'delete_workflow':
+                    try {
+                        $workflowId = filter_input(INPUT_POST, 'workflow_id', FILTER_SANITIZE_NUMBER_INT);
+                        
+                        if (!$workflowId) {
+                            throw new Exception('ID do workflow não fornecido');
+                        }
+
+                        // Verifica se o workflow pertence ao usuário
+                        $stmt = $pdo->prepare("
+                            SELECT id FROM workflow 
+                            WHERE id = ? AND usuarios_id = ? AND status = 'ativo'
+                        ");
+                        $stmt->execute([$workflowId, $userID]);
+                        
+                        if (!$stmt->fetch()) {
+                            throw new Exception('Workflow não encontrado ou sem permissão');
+                        }
+
+                        // Inativa o workflow
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow 
+                            SET status = 'inativo',
+                                data_atualizacao = NOW()
+                            WHERE id = ? AND usuarios_id = ?
+                        ");
+                        
+                        if ($stmt->execute([$workflowId, $userID])) {
+                            echo json_encode(['success' => true]);
+                        } else {
+                            throw new Exception('Erro ao inativar workflow');
+                        }
+                    } catch (Exception $e) {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                    }
+                    exit;
+                    break;
             }
         }
         
@@ -1231,13 +1271,6 @@ try {
                 <div class="sidebar-header">
                     <h2>Meus Projetos</h2>
                 </div>
-                <div class="workflow-list">
-                    <?php foreach($workflows as $workflow): ?>
-                        <div class="workflow-item" data-id="<?php echo $workflow['id']; ?>">
-                            <span class="workflow-name"><?php echo htmlspecialchars($workflow['nome']); ?></span>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
                 <div class="sidebar-footer">
                     <button type="button" class="create-btn" onclick="return false;">+ Criar Novo Workflow</button>
                 </div>
@@ -1246,13 +1279,14 @@ try {
             <!-- Área principal de trabalho -->
             <div class="main-content">
                 <div class="board-header">
-                    <h2 class="selected-workflow-name">Nome do Workflow</h2>
-                    <div class="workflow-menu">
-                        
-                        <button class="workflow-menu-btn">⋮</button>
-                        <div class="workflow-menu-dropdown">
-                            <div class="workflow-menu-option">Editar</div>
-                            <div class="workflow-menu-option">Apagar</div>
+                    <div class="workflow-title-container">
+                        <h2 class="selected-workflow-name">Nome do Workflow</h2>
+                        <div class="workflow-menu">
+                            <button class="workflow-menu-btn">⋮</button>
+                            <div class="workflow-menu-dropdown">
+                                <div class="workflow-menu-option" data-action="edit">Editar</div>
+                                <div class="workflow-menu-option" data-action="delete">Apagar</div>
+                            </div>
                         </div>
                     </div>
                 </div>
