@@ -1175,43 +1175,39 @@ try {
                     break;
                 case 'delete_workflow':
                     try {
-                        $workflowId = filter_input(INPUT_POST, 'workflow_id', FILTER_SANITIZE_NUMBER_INT);
-                        
-                        if (!$workflowId) {
+                        if (!isset($_POST['workflow_id'])) {
                             throw new Exception('ID do workflow não fornecido');
                         }
 
-                        // Verifica se o workflow pertence ao usuário
-                        $stmt = $pdo->prepare("
-                            SELECT id FROM workflow 
-                            WHERE id = ? AND usuarios_id = ? AND status = 'ativo'
-                        ");
-                        $stmt->execute([$workflowId, $userID]);
+                        $workflowId = $_POST['workflow_id'];
                         
-                        if (!$stmt->fetch()) {
-                            throw new Exception('Workflow não encontrado ou sem permissão');
-                        }
+                        // Log para debug
+                        error_log('Tentando apagar workflow: ' . $workflowId);
 
-                        // Inativa o workflow
+                        // Atualiza o status para inativo
                         $stmt = $pdo->prepare("
                             UPDATE workflow 
-                            SET status = 'inativo',
-                                data_atualizacao = NOW()
-                            WHERE id = ? AND usuarios_id = ?
+                            SET status = 'inativo' 
+                            WHERE id = ? 
+                            AND usuarios_id = ?
                         ");
                         
-                        if ($stmt->execute([$workflowId, $userID])) {
+                        $result = $stmt->execute([$workflowId, $userID]);
+                        
+                        if ($result && $stmt->rowCount() > 0) {
+                            error_log('Workflow apagado com sucesso');
                             echo json_encode(['success' => true]);
                         } else {
-                            throw new Exception('Erro ao inativar workflow');
+                            error_log('Nenhum workflow foi atualizado');
+                            throw new Exception('Workflow não encontrado ou você não tem permissão');
                         }
                     } catch (Exception $e) {
+                        error_log('Erro ao apagar workflow: ' . $e->getMessage());
                         echo json_encode([
                             'success' => false,
                             'message' => $e->getMessage()
                         ]);
                     }
-                    exit;
                     break;
             }
         }
@@ -1271,6 +1267,13 @@ try {
                 <div class="sidebar-header">
                     <h2>Meus Projetos</h2>
                 </div>
+                <div class="workflow-list">
+                    <?php foreach($workflows as $workflow): ?>
+                        <div class="workflow-item" data-id="<?php echo $workflow['id']; ?>">
+                            <span class="workflow-name"><?php echo htmlspecialchars($workflow['nome']); ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
                 <div class="sidebar-footer">
                     <button type="button" class="create-btn" onclick="return false;">+ Criar Novo Workflow</button>
                 </div>
@@ -1284,8 +1287,8 @@ try {
                         <div class="workflow-menu">
                             <button class="workflow-menu-btn">⋮</button>
                             <div class="workflow-menu-dropdown">
-                                <div class="workflow-menu-option" data-action="edit">Editar</div>
-                                <div class="workflow-menu-option" data-action="delete">Apagar</div>
+                                <div class="workflow-menu-option">Editar</div>
+                                <div class="workflow-menu-option">Apagar</div>
                             </div>
                         </div>
                     </div>
