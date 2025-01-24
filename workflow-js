@@ -2476,7 +2476,7 @@ function isExpired(dateString) {
             <div class="workflow-item" data-id="${workflow.id}">
                 <div class="workflow-name">${workflow.nome}</div>
                 <div class="workflow-menu">
-                    <button type="button" class="workflow-menu-btn">⋮</button>
+                    <button type="button" class="workflow-menu-btn" data-workflow-id="${workflow.id}">⋮</button>
                     <div class="workflow-menu-dropdown">
                         <div class="workflow-menu-option" data-action="edit">Editar</div>
                         <div class="workflow-menu-option" data-action="delete">Apagar</div>
@@ -2485,8 +2485,10 @@ function isExpired(dateString) {
             </div>
         `).join('');
         
-        console.log('✅ HTML renderizado');
-        console.log('🔄 Chamando initializeWorkflowMenus...');
+        console.log('HTML renderizado');
+        
+        // Chama explicitamente a inicialização dos menus
+        console.log('Chamando initializeWorkflowMenus...');
         initializeWorkflowMenus();
         
         console.groupEnd();
@@ -2503,7 +2505,6 @@ function isExpired(dateString) {
                 if (data.success) {
                     console.log('Renderizando workflows...');
                     renderWorkflows(data.workflows);
-                    console.log('Workflows renderizados');
                 }
             })
             .catch(error => {
@@ -2770,99 +2771,210 @@ function isExpired(dateString) {
         }
     });
 
-    workflowMenuBtn.addEventListener('click', (event) => {
-        event.stopPropagation();
-        const dropdown = document.querySelector('.workflow-menu-dropdown');
-        dropdown.classList.toggle('show');
-    });
-    
-    // Função para inativar o workflow
-    async function deleteWorkflow(workflowId) {
-        try {
-            const formData = new FormData();
-            formData.append('action', 'delete_workflow');
-            formData.append('workflow_id', workflowId);
-
-            const response = await fetch('index.php', {
-                method: 'POST',
-                body: formData
-            });
-
-            const text = await response.text();
-            console.log('Resposta do servidor:', text);
-
-            // Tenta parsear apenas o primeiro JSON válido da resposta
-            const jsonMatch = text.match(/\{.*\}/);
-            if (!jsonMatch) {
-                throw new Error('Resposta inválida do servidor');
-            }
-            const data = JSON.parse(jsonMatch[0]);
-
-            if (data.success) {
-                // Remove o workflow da lista
-                const workflowElement = document.querySelector(`.workflow-item[data-id="${workflowId}"]`);
-                if (workflowElement) {
-                    workflowElement.remove();
-                }
-                
-                // Se este era o workflow selecionado, limpa a área principal
-                if (selectedWorkflowId === workflowId) {
-                    document.querySelector('.lists-container').innerHTML = '';
-                    document.querySelector('.selected-workflow-name').textContent = '';
-                    selectedWorkflowId = null;
-                }
-            } else {
-                throw new Error(data.message || 'Erro ao excluir workflow');
-            }
-        } catch (error) {
-            console.error('Erro ao excluir workflow:', error);
-            alert('Erro ao excluir workflow: ' + error.message);
-        }
+    // Adicione esta função de debug
+    function logElementPosition(element, label) {
+        const rect = element.getBoundingClientRect();
+        console.log(`${label} Position:`, {
+            top: rect.top,
+            left: rect.left,
+            right: rect.right,
+            bottom: rect.bottom,
+            width: rect.width,
+            height: rect.height
+        });
     }
 
-    // Remova o event listener nas linhas 2694-2715 e substitua por:
+    // Modifique o event listener do menu
+    workflowMenuBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const button = event.currentTarget;
+        const dropdown = document.querySelector('.workflow-menu-dropdown');
+        
+        // Log das posições antes de mostrar o dropdown
+        console.log('=== DEBUG POSIÇÕES DO MENU ===');
+        logElementPosition(button, 'Botão Menu');
+        logElementPosition(dropdown, 'Dropdown (antes de mostrar)');
+        
+        // Log da estrutura do DOM
+        console.log('=== DEBUG ESTRUTURA DOM ===');
+        console.log('Botão parent:', button.parentElement);
+        console.log('Dropdown parent:', dropdown.parentElement);
+        
+        dropdown.classList.toggle('show');
+        
+        // Log da posição final do dropdown
+        setTimeout(() => {
+            logElementPosition(dropdown, 'Dropdown (depois de mostrar)');
+            
+            // Log dos estilos computados
+            const computedStyle = window.getComputedStyle(dropdown);
+            console.log('Estilos computados do dropdown:', {
+                position: computedStyle.position,
+                top: computedStyle.top,
+                left: computedStyle.left,
+                right: computedStyle.right,
+                transform: computedStyle.transform,
+                zIndex: computedStyle.zIndex
+            });
+        }, 0);
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('🔄 Documento carregado, verificando elementos iniciais:', {
+            menu: document.querySelector('.workflow-menu'),
+            botaoMenu: document.querySelector('.workflow-menu-btn'),
+            dropdown: document.querySelector('.workflow-menu-dropdown'),
+            opcoes: document.querySelectorAll('.workflow-menu-option')
+        });
+    });
+
     function initializeWorkflowMenus() {
         console.log('🔄 Iniciando initializeWorkflowMenus');
         
-        // Agora procuramos o menu na área principal
-        const workflowMenu = document.querySelector('.workflow-title-container .workflow-menu');
-        if (!workflowMenu) {
-            console.error('❌ Menu do workflow não encontrado');
-            return;
-        }
-        console.log('✅ Menu encontrado:', workflowMenu);
+        // Captura todos os menus de workflow
+        const workflowMenus = document.querySelectorAll('.workflow-menu');
+        console.log('Menus encontrados:', workflowMenus.length);
 
-        // Encontra o botão e o dropdown
-        const menuBtn = workflowMenu.querySelector('.workflow-menu-btn');
-        const menuDropdown = workflowMenu.querySelector('.workflow-menu-dropdown');
-        const menuOptions = workflowMenu.querySelectorAll('.workflow-menu-option');
+        workflowMenus.forEach(menu => {
+            const menuBtn = menu.querySelector('.workflow-menu-btn');
+            const menuDropdown = menu.querySelector('.workflow-menu-dropdown');
+            const menuOptions = menu.querySelectorAll('.workflow-menu-option');
+            
+            console.log('Elementos do menu:', {
+                botao: menuBtn,
+                dropdown: menuDropdown,
+                opcoes: menuOptions.length
+            });
 
-        console.log('📋 Opções encontradas:', menuOptions.length);
-        menuOptions.forEach(opt => console.log('Opção:', opt.textContent));
-
-        // Adiciona listener para as opções do menu
-        menuOptions.forEach(option => {
-            option.addEventListener('click', function(e) {
-                e.stopPropagation();
-                console.log('🎯 Clique em opção:', {
-                    texto: this.textContent,
-                    acao: this.dataset.action
+            // Handler para o botão do menu
+            menuBtn.addEventListener('click', (event) => {
+                console.log('🖱️ Botão do menu clicado');
+                event.stopPropagation();
+                
+                // Fecha outros menus abertos
+                document.querySelectorAll('.workflow-menu-dropdown.show').forEach(dropdown => {
+                    if (dropdown !== menuDropdown) {
+                        dropdown.classList.remove('show');
+                    }
                 });
+                
+                menuDropdown.classList.toggle('show');
+            });
 
-                if (this.dataset.action === 'delete') {
-                    const workflowId = selectedWorkflowId; // Usa a variável global
-                    console.log('🗑️ Tentando excluir workflow:', workflowId);
-                    if (confirm('Tem certeza que deseja excluir este workflow?')) {
+            // Handler para as opções do menu
+            menuOptions.forEach(option => {
+                option.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    const action = event.target.textContent.trim();
+                    console.log('🎯 Opção clicada:', action);
+
+                    const workflowItem = menu.closest('.workflow-item');
+                    const workflowId = workflowItem.dataset.id;
+                    const workflowName = workflowItem.querySelector('.workflow-name').textContent;
+
+                    console.log('Dados do workflow:', {
+                        id: workflowId,
+                        nome: workflowName,
+                        acao: action
+                    });
+
+                    if (action === 'Apagar') {
+                        console.log('🗑️ Chamando deleteWorkflow com ID:', workflowId);
                         deleteWorkflow(workflowId);
                     }
-                }
+                });
+            });
+        });
 
-                // Fecha o dropdown após a ação
-                menuDropdown.classList.remove('show');
+        // Fecha os menus ao clicar fora
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('.workflow-menu')) {
+                document.querySelectorAll('.workflow-menu-dropdown.show').forEach(dropdown => {
+                    dropdown.classList.remove('show');
+                });
+            }
+        });
+    }
+
+    // Modifique a função deleteWorkflow
+    function deleteWorkflow(workflowId) {
+        console.log('🗑️ Iniciando processo de exclusão:', workflowId);
+        
+        if (!confirm('Tem certeza que deseja apagar este workflow?')) {
+            console.log('❌ Operação cancelada pelo usuário');
+            return;
+        }
+
+        console.log('✅ Usuário confirmou a exclusão');
+        
+        const formData = new FormData();
+        formData.append('action', 'delete_workflow');
+        formData.append('workflow_id', workflowId);
+
+        console.log('📤 Enviando requisição...');
+
+        fetch('index.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            console.log('📥 Resposta recebida:', response);
+            return response.json();
+        })
+        .then(data => {
+            console.log('📦 Dados processados:', data);
+            if (data.success) {
+                const workflowElement = document.querySelector(`.workflow-item[data-id="${workflowId}"]`);
+                if (workflowElement) {
+                    workflowElement.remove();
+                    console.log('✅ Workflow removido da interface');
+                }
+            } else {
+                throw new Error(data.message || 'Erro ao apagar workflow');
+            }
+        })
+        .catch(error => {
+            console.error('❌ Erro:', error);
+            alert('Erro ao apagar workflow: ' + error.message);
+        });
+    }
+
+    // Adicione esta inicialização no DOMContentLoaded
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('🔄 Documento carregado, inicializando menus...');
+        initializeWorkflowMenus();
+    });
+
+    // Função para depuração dos eventos de clique
+    function addClickDebuggers() {
+        console.log('🔍 Adicionando debuggers aos menus...');
+        
+        // Debugger para os botões do menu
+        document.querySelectorAll('.workflow-menu-btn').forEach(btn => {
+            console.log('📌 Encontrado botão de menu:', btn);
+            btn.addEventListener('click', (e) => {
+                console.log('🖱️ Clique no botão de menu');
+                e.stopPropagation();
+            });
+        });
+
+        // Debugger para as opções do menu
+        document.querySelectorAll('.workflow-menu-option').forEach(option => {
+            console.log('📌 Encontrada opção de menu:', option.textContent);
+            option.addEventListener('click', (e) => {
+                console.log('🖱️ Clique na opção:', e.target.textContent);
+                const workflowItem = e.target.closest('.workflow-item');
+                if (workflowItem) {
+                    console.log('📦 Workflow relacionado:', {
+                        id: workflowItem.dataset.id,
+                        nome: workflowItem.querySelector('.workflow-name').textContent
+                    });
+                }
             });
         });
     }
 
-    // Chame a função de inicialização logo após sua definição
-    initializeWorkflowMenus();
+    // Adicione esta chamada no final do seu arquivo script.js
+    document.addEventListener('DOMContentLoaded', addClickDebuggers);
+
     });
