@@ -755,11 +755,7 @@ body.workflow-page {
     display: none;
     z-index: 1000;
     min-width: 120px;
-}
-
-.list-menu-dropdown.show {
-    display: block;
-}
+} 
 
 .list-menu-option {
     padding: 8px 12px;
@@ -859,19 +855,6 @@ body.workflow-page {
 .card .card-timer.expired i,
 .subcard .card-timer.expired i {
     color: #ff4444;
-}
-
-.list-menu-container {
-    position: relative;
-}
-
-.list-menu-trigger {
-    background: none;
-    border: none;
-    color: #fff;
-    cursor: pointer;
-    font-size: 20px;
-    padding: 0 8px;
 }
 
 .list-menu-dropdown.show {
