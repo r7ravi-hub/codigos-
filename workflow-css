@@ -24,12 +24,12 @@ body.workflow-page {
     display: flex;
     flex-direction: column;
     border-right: 1px solid #333;
+    overflow-y: auto;
 }
 
 .sidebar-header {
+    padding: 16px;
     border-bottom: 1px solid #333;
-    padding: 15px;
-    margin-bottom: 0;
 }
 
 .sidebar-header h2 {
@@ -39,9 +39,7 @@ body.workflow-page {
 }
 
 .workflow-list {
-    flex: 1;
-    overflow-y: auto;
-    min-height: 0;
+    padding: 8px 0;
 }
 
 .workflow-item.active {
@@ -784,24 +782,39 @@ body.workflow-page {
 
 
 /* ========= MENU MEUS PROJETOS ========= */
-.workflow-menu-wrapper {
-    position: relative;
-    display: inline-block;
+.workflow-title-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
+.selected-workflow-name {
+    margin: 0;
+    padding-right: 8px;
+}
+
+/* Ajuste para a sidebar */
 .workflow-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 8px 16px;
     cursor: pointer;
-    position: relative;
 }
 
+.workflow-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 8px;
+}
+
+/* Menu do Workflow */
 .workflow-menu {
     position: relative;
-    display: inline-block;
-    z-index: 1002;
+    display: inline-flex;
+    align-items: center;
 }
 
 .workflow-menu-btn {
@@ -809,33 +822,48 @@ body.workflow-page {
     border: none;
     color: #888;
     cursor: pointer;
-    padding: 4px 8px;
+    padding: 4px;
     font-size: 20px;
     transition: color 0.2s;
-    position: relative;
-    z-index: 1002;
 }
 
-.workflow-menu-btn:hover {
+.workflow-menu-dropdown {
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 3px;
+    min-width: 120px;
+    z-index: 99999;
+    display: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.workflow-menu-option {
+    padding: 8px 12px;
     color: #fff;
-}
-
-/* Ajuste para o botão de criar novo workflow */
-.create-btn {
-    width: 100%;
-    padding: 8px 16px;
-    background-color: transparent;
-    border: none;
-    color: #3498db;
     cursor: pointer;
-    font-size: 14px;
-    text-align: left;
-    transition: background-color 0.2s;
+    font-size: 13px;
+    white-space: nowrap;
 }
 
-.create-btn:hover {
-    background-color: #252525;
-    color: #fff;
+.workflow-menu-option:hover {
+    background: #3a3a3a;
+}
+
+/* Ajuste para a sidebar */
+.sidebar {
+    width: 250px;
+    background: #1a1a1a;
+    border-right: 1px solid #333;
+    overflow-y: auto;
+}
+
+.sidebar-header {
+    padding: 16px;
+    border-bottom: 1px solid #333;
+}
+
+.workflow-list {
+    padding: 8px 0;
 }
 
 /* Ajuste para cards e subcards */
@@ -948,29 +976,21 @@ body.workflow-page {
 
 /* Adicione estas regras se não existirem */
 .workflow-menu-dropdown {
-    position: fixed;  /* Alterado de absolute para fixed para posicionamento correto */
+    position: absolute;
+    top: 100%;
+    left: 0;
     background: #2a2a2a;
     border: 1px solid #444;
     border-radius: 3px;
     min-width: 150px;
-    z-index: 99999;  /* Z-index alto para garantir que fique sobre outros elementos */
+    z-index: 99999;
     display: none;
     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    transform: translateX(-50%);
+    margin-top: 5px;
 }
 
 .workflow-menu-dropdown.show {
-    display: block !important;  /* Important para garantir que sobrescreva outros estilos */
-}
-
-.workflow-menu-option {
-    padding: 8px 12px;
-    color: #fff;
-    cursor: pointer;
-    font-size: 13px;
-    transition: background-color 0.2s;
-}
-
-.workflow-menu-option:hover {
-    background: #3a3a3a;
+    display: block !important;
 }
 
