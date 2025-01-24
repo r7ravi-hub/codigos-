@@ -1223,6 +1223,50 @@ try {
                     }
                     exit;
                     break;
+                case 'update_workflow':
+                    try {
+                        $workflow_id = filter_input(INPUT_POST, 'workflow_id', FILTER_SANITIZE_NUMBER_INT);
+                        $nome = filter_input(INPUT_POST, 'nome', FILTER_SANITIZE_STRING);
+                        
+                        if (empty($workflow_id) || empty($nome)) {
+                            throw new Exception("ID do workflow e nome são obrigatórios");
+                        }
+                        
+                        // Verifica se o workflow pertence ao usuário
+                        $stmt = $pdo->prepare("
+                            SELECT id 
+                            FROM workflow 
+                            WHERE id = ? 
+                            AND usuarios_id = ? 
+                            AND status = 'ativo'
+                        ");
+                        $stmt->execute([$workflow_id, $userID]);
+                        
+                        if (!$stmt->fetch()) {
+                            throw new Exception("Workflow não encontrado ou sem permissão");
+                        }
+                        
+                        // Atualiza o nome do workflow
+                        $stmt = $pdo->prepare("
+                            UPDATE workflow 
+                            SET nome = ?,
+                                data_atualizacao = NOW()
+                            WHERE id = ?
+                        ");
+                        
+                        if ($stmt->execute([$nome, $workflow_id])) {
+                            echo json_encode(['success' => true]);
+                        } else {
+                            throw new Exception("Erro ao atualizar workflow");
+                        }
+                    } catch (Exception $e) {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage()
+                        ]);
+                    }
+                    exit;
+                    break;
                     
             }
         }
@@ -1298,9 +1342,9 @@ try {
             <div class="main-content">
                 <div class="board-header">
                     <div class="workflow-title-container">
-                        <h2 class="selected-workflow-name">Nome do Workflow</h2>
+                        <h2 class="selected-workflow-name"><?php echo htmlspecialchars($workflows[0]['nome']); ?></h2>
                         <div class="workflow-menu">
-                            <button class="workflow-menu-btn">⋮</button>
+                            <button class="workflow-menu-trigger">⋮</button>
                             <div class="workflow-menu-dropdown">
                                 <div class="workflow-menu-option" data-action="edit">Editar</div>
                                 <div class="workflow-menu-option" data-action="delete">Apagar</div>
