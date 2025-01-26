@@ -1175,47 +1175,34 @@ try {
                     break;
                 case 'delete_workflow':
                     try {
-                        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-                            throw new Exception('Método não permitido');
-                        }
-
-                        $workflow_id = filter_input(INPUT_POST, 'workflow_id', FILTER_SANITIZE_NUMBER_INT);
+                        // Limpa qualquer output anterior
+                        ob_clean();
                         
-                        if (!$workflow_id) {
-                            throw new Exception('ID do workflow inválido');
+                        if (!isset($_POST['workflow_id'])) {
+                            throw new Exception('ID do workflow não fornecido');
                         }
 
-                        // Verifica se o workflow pertence ao usuário
-                        $stmt = $pdo->prepare("
-                            SELECT id 
-                            FROM workflow 
-                            WHERE id = ? AND usuarios_id = ? AND status = 'ativo'
-                        ");
-                        $stmt->execute([$workflow_id, $userID]);
+                        $workflowId = filter_input(INPUT_POST, 'workflow_id', FILTER_SANITIZE_NUMBER_INT);
                         
-                        if (!$stmt->fetch()) {
-                            throw new Exception('Workflow não encontrado');
-                        }
-
-                        // Inativa o workflow (soft delete)
+                        // Atualiza o status para inativo
                         $stmt = $pdo->prepare("
                             UPDATE workflow 
-                            SET status = 'inativo', 
-                                data_atualizacao = NOW() 
-                            WHERE id = ? AND usuarios_id = ?
+                            SET status = 'inativo',
+                                data_atualizacao = NOW()
+                            WHERE id = ? 
+                            AND usuarios_id = ?
                         ");
                         
-                        if (!$stmt->execute([$workflow_id, $userID])) {
-                            throw new Exception('Erro ao inativar workflow');
+                        $result = $stmt->execute([$workflowId, $userID]);
+                        
+                        if ($result && $stmt->rowCount() > 0) {
+                            echo json_encode(['success' => true]);
+                        } else {
+                            throw new Exception('Workflow não encontrado ou você não tem permissão');
                         }
-
-                        echo json_encode([
-                            'success' => true,
-                            'message' => 'Workflow apagado com sucesso'
-                        ]);
                         
                     } catch (Exception $e) {
-                        error_log('Erro ao apagar workflow: ' . $e->getMessage());
+                        error_log('Erro ao inativar workflow: ' . $e->getMessage());
                         echo json_encode([
                             'success' => false,
                             'message' => $e->getMessage()
@@ -1225,41 +1212,38 @@ try {
                     break;
                 case 'update_workflow':
                     try {
-                        $workflow_id = filter_input(INPUT_POST, 'workflow_id', FILTER_SANITIZE_NUMBER_INT);
+                        // Limpa qualquer output anterior
+                        ob_clean();
+                        
+                        if (!isset($_POST['workflow_id']) || !isset($_POST['nome'])) {
+                            throw new Exception('Parâmetros inválidos');
+                        }
+                        
+                        $workflowId = filter_input(INPUT_POST, 'workflow_id', FILTER_SANITIZE_NUMBER_INT);
                         $nome = filter_input(INPUT_POST, 'nome', FILTER_SANITIZE_STRING);
                         
-                        if (empty($workflow_id) || empty($nome)) {
-                            throw new Exception("ID do workflow e nome são obrigatórios");
+                        if (!$workflowId || !$nome) {
+                            throw new Exception('Dados inválidos');
                         }
                         
-                        // Verifica se o workflow pertence ao usuário
-                        $stmt = $pdo->prepare("
-                            SELECT id 
-                            FROM workflow 
-                            WHERE id = ? 
-                            AND usuarios_id = ? 
-                            AND status = 'ativo'
-                        ");
-                        $stmt->execute([$workflow_id, $userID]);
-                        
-                        if (!$stmt->fetch()) {
-                            throw new Exception("Workflow não encontrado ou sem permissão");
-                        }
-                        
-                        // Atualiza o nome do workflow
                         $stmt = $pdo->prepare("
                             UPDATE workflow 
-                            SET nome = ?,
-                                data_atualizacao = NOW()
-                            WHERE id = ?
+                            SET nome = ?, 
+                                data_atualizacao = NOW() 
+                            WHERE id = ? 
+                            AND usuarios_id = ?
+                            AND status = 'ativo'
                         ");
                         
-                        if ($stmt->execute([$nome, $workflow_id])) {
+                        $success = $stmt->execute([$nome, $workflowId, $userID]);
+                        
+                        if ($success && $stmt->rowCount() > 0) {
                             echo json_encode(['success' => true]);
                         } else {
-                            throw new Exception("Erro ao atualizar workflow");
+                            throw new Exception('Workflow não encontrado ou sem permissão');
                         }
                     } catch (Exception $e) {
+                        error_log('Erro ao atualizar workflow: ' . $e->getMessage());
                         echo json_encode([
                             'success' => false,
                             'message' => $e->getMessage()
@@ -1267,7 +1251,6 @@ try {
                     }
                     exit;
                     break;
-                    
             }
         }
         
@@ -1342,9 +1325,9 @@ try {
             <div class="main-content">
                 <div class="board-header">
                     <div class="workflow-title-container">
-                        <h2 class="selected-workflow-name"><?php echo htmlspecialchars($workflows[0]['nome']); ?></h2>
+                        <h2 class="selected-workflow-name">Nome do Workflow</h2>
                         <div class="workflow-menu">
-                            <button class="workflow-menu-trigger">⋮</button>
+                            <button class="workflow-menu-btn">⋮</button>
                             <div class="workflow-menu-dropdown">
                                 <div class="workflow-menu-option" data-action="edit">Editar</div>
                                 <div class="workflow-menu-option" data-action="delete">Apagar</div>
