@@ -109,7 +109,6 @@ body.workflow-page {
     max-height: min-content;
     overflow: visible !important;
     cursor: default;
-    z-index: 1;
     position: relative;
 }
 
@@ -918,4 +917,3 @@ body.workflow-page {
 .workflow-title-container .workflow-menu-option:hover {
     background: #3a3a3a;
 }
-
