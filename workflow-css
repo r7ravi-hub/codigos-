@@ -12,7 +12,7 @@ body.workflow-page {
 /* Layout principal */
 .app-container {
     display: flex;
-    height: calc(100vh - 80px);
+    height: calc(100vh - 60px);
     overflow: hidden;
 }
 
@@ -25,6 +25,15 @@ body.workflow-page {
     flex-direction: column;
     border-right: 1px solid #333;
     overflow-y: auto;
+}
+
+.sidebar-header {
+    padding: 16px 15px;
+    border-bottom: 1px solid #333;
+    height: 60px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
 }
 
 .sidebar-header h2 {
@@ -59,8 +68,10 @@ body.workflow-page {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 15px;
+    padding: 16px 15px;
     border-bottom: 1px solid #333;
+    height: 60px;
+    box-sizing: border-box;
 }
 
 .board-header h2 {
@@ -773,71 +784,6 @@ body.workflow-page {
 
 /* Ajuste para a sidebar */
 
-.sidebar-header {
-    padding: 16px;
-    border-bottom: 1px solid #333;
-}
-
-/* Ajuste para cards e subcards */
-.card .card-time-info,
-.subcard .card-time-info {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-}
-
-
-/* Estado expirado com maior especificidade */
-.card .card-timer[data-expired="true"],
-.subcard .card-timer[data-expired="true"] {
-    color: #ff4444 !important;
-}
-
-/* Data em cards e subcards */
-.card .card-date,
-.subcard .card-date {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    color: #3498db;
-}
-
-.card .card-timer[data-expired="false"],
-.subcard .card-timer[data-expired="false"] {
-    color: #3498db !important;
-}
-
-.card .card-timer[data-expired="true"] i,
-.subcard .card-timer[data-expired="true"] i {
-    color: #ff4444 !important;
-    
-}
-
-.card .card-timer[data-expired="false"] i,
-.subcard .card-timer[data-expired="false"] i {
-    color: #3498db !important;
-}
-
-/* Ajuste o seletor para garantir que a cor do ícone mude quando expirado */
-.card .card-timer.expired,
-.subcard .card-timer.expired,
-.card .card-timer.expired i,
-.subcard .card-timer.expired i {
-    color: #ff4444 !important;
-}
-
-/* Aumente a especificidade para garantir que a cor vermelha seja aplicada */
-.card .card-timer.expired i,
-.subcard .card-timer.expired i {
-    color: #ff4444 !important;
-}
-
-.list-menu-dropdown.show {
-    display: block !important;
-}
-
-/* ADICIONAR ESTE BLOCO */
 .workflow-item {
     display: flex;
     justify-content: space-between;
@@ -857,35 +803,33 @@ body.workflow-page {
 
 .workflow-menu {
     position: relative;
-    display: inline-flex;
-    align-items: center;
+    display: inline-block;
 }
 
-.workflow-menu-trigger {
+.workflow-menu-btn {
     background: none;
     border: none;
-    color: #666;
+    color: #888;
     cursor: pointer;
-    padding: 5px;
+    padding: 4px;
     font-size: 20px;
     transition: color 0.2s;
 }
 
-.workflow-menu-trigger:hover {
+.workflow-menu-btn:hover {
     color: #fff;
 }
 
 .workflow-menu-dropdown {
     position: absolute;
-    top: 100%;
-    right: 0;
-    background: #2a2a2a;
-    border: 1px solid #444;
-    border-radius: 3px;
-    min-width: 150px;
-    z-index: 99999;
+    left: 100%;
+    top: 0;
+    min-width: 120px;
+    background-color: #fff;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    border-radius: 4px;
     display: none;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    z-index: 1000;
 }
 
 .workflow-menu-dropdown.show {
@@ -893,14 +837,13 @@ body.workflow-page {
 }
 
 .workflow-menu-option {
-    padding: 8px 16px;
-    color: #fff;
+    padding: 8px 12px;
     cursor: pointer;
     transition: background-color 0.2s;
 }
 
 .workflow-menu-option:hover {
-    background-color: #3a3a3a;
+    background-color: #f5f5f5;
 }
 /* FIM DO BLOCO PARA ADICIONAR */
 
@@ -910,33 +853,43 @@ body.workflow-page {
     align-items: center;
     gap: 8px;
     padding: 16px;
-    border-bottom: 1px solid #333;
 }
 
 /* Ajuste o título */
 .selected-workflow-name {
     margin: 0;
     flex: 1;
-    font-size: 18px;
-    line-height: 1.5;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-/* Novas classes para o menu do workflow */
-.workflow-menu-trigger {
+/* Ajuste o menu */
+.workflow-title-container .workflow-menu {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 8px; /* Espaço entre o título e o menu */
+}
+
+.workflow-title-container .workflow-menu-btn {
     background: none;
     border: none;
-    color: #666;
+    color: #888;
     cursor: pointer;
-    padding: 5px;
+    padding: 4px 8px;
     font-size: 20px;
     transition: color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.workflow-menu-trigger:hover {
+.workflow-title-container .workflow-menu-btn:hover {
     color: #fff;
 }
 
-.workflow-menu-dropdown {
+/* Ajuste o posicionamento do dropdown */
+.workflow-title-container .workflow-menu-dropdown {
     position: absolute;
     top: 100%;
     right: 0;
@@ -947,20 +900,22 @@ body.workflow-page {
     z-index: 99999;
     display: none;
     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    margin-top: 5px;
 }
 
-.workflow-menu-dropdown.show {
-    display: block;
+.workflow-title-container .workflow-menu-dropdown.show {
+    display: block !important;
 }
 
-.workflow-menu-option {
-    padding: 8px 16px;
+.workflow-title-container .workflow-menu-option {
+    padding: 8px 12px;
     color: #fff;
     cursor: pointer;
-    transition: background-color 0.2s;
+    font-size: 13px;
+    white-space: nowrap;
 }
 
-.workflow-menu-option:hover {
-    background-color: #3a3a3a;
+.workflow-title-container .workflow-menu-option:hover {
+    background: #3a3a3a;
 }
 
