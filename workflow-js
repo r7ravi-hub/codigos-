@@ -613,6 +613,19 @@ function isExpired(dateString) {
 
     
     function createCardElement(cardData, isSubcard = false) {
+        // Log para debug
+        console.log('Dados do card:', {
+            id: cardData.id,
+            nome: cardData.nome,
+            date_end: cardData.date_end,
+            date_active: cardData.date_active,
+            timer_end: cardData.timer_end,
+            timer_active: cardData.timer_active,
+            // Adicione o tipo de dado para verificar
+            type_date_active: typeof cardData.date_active,
+            type_timer_active: typeof cardData.timer_active
+        });
+
         const card = document.createElement('div');
         card.className = isSubcard ? 'card subcard' : 'card';
         card.dataset.cardId = cardData.id;
@@ -657,8 +670,19 @@ function isExpired(dateString) {
             timeInfo.appendChild(timerDiv);
         }
     
-        // Adiciona data se existir
-        if (cardData.date_end) {
+        // Antes de renderizar, verifica as condições
+        const shouldShowDate = cardData.date_active === '1' || cardData.date_active === 1;
+        const hasDateEnd = Boolean(cardData.date_end);
+
+        console.log('Condições de exibição da data:', {
+            shouldShowDate,
+            hasDateEnd,
+            date_active: cardData.date_active,
+            date_end: cardData.date_end
+        });
+
+        // Adiciona a data se ambas as condições forem verdadeiras
+        if (shouldShowDate && hasDateEnd) {
             const dateDiv = document.createElement('div');
             dateDiv.className = 'card-date';
             dateDiv.innerHTML = `
@@ -2040,6 +2064,12 @@ function isExpired(dateString) {
             const dateEnd = document.getElementById('dateEnd');
             const dateValue = dateEnd.value;
 
+            console.log('Toggle Date:', {
+                isActive: isActive,
+                willBeActive: !isActive,
+                dateValue: dateValue
+            });
+
             if (!dateValue) {
                 alert('Selecione uma data primeiro');
                 return;
@@ -2047,6 +2077,7 @@ function isExpired(dateString) {
 
             this.saveDateState(cardId, !isActive).then(success => {
                 if (success) {
+                    console.log('Data atualizada com sucesso, novo estado:', !isActive);
                     btn.classList.toggle('active');
                     btn.textContent = isActive ? '▶' : '⏸';
                     const dateStatus = document.querySelector('.date-status');
@@ -2088,6 +2119,13 @@ function isExpired(dateString) {
             const dateEnd = document.getElementById('dateEnd');
             const dateSound = document.getElementById('dateSound');
 
+            console.log('Enviando dados para o servidor:', {
+                cardId,
+                active,
+                dateEnd: dateEnd.value,
+                dateSound: dateSound.checked
+            });
+
             const formData = new FormData();
             formData.append('action', 'update_card_date');
             formData.append('card_id', cardId);
@@ -2101,10 +2139,15 @@ function isExpired(dateString) {
             })
             .then(response => response.json())
             .then(data => {
+                console.log('Resposta do servidor:', data);
                 if (data.success) {
                     return true;
                 }
                 throw new Error(data.message || 'Erro ao atualizar data');
+            })
+            .catch(error => {
+                console.error('Erro na requisição:', error);
+                throw error;
             });
         }
     }
