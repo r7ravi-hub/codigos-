@@ -613,89 +613,72 @@ function isExpired(dateString) {
 
     
     function createCardElement(cardData, isSubcard = false) {
-        // Log para debug
-        console.log('Dados do card:', {
+        // Log detalhado dos dados recebidos
+        console.log('Criando card:', {
             id: cardData.id,
             nome: cardData.nome,
-            date_end: cardData.date_end,
-            date_active: cardData.date_active,
-            timer_end: cardData.timer_end,
-            timer_active: cardData.timer_active,
-            // Adicione o tipo de dado para verificar
-            type_date_active: typeof cardData.date_active,
-            type_timer_active: typeof cardData.timer_active
+            timer: {
+                end: cardData.timer_end,
+                active: cardData.timer_active,
+                type: typeof cardData.timer_active,
+                parsed: parseInt(cardData.timer_active),
+                condition: cardData.timer_end && parseInt(cardData.timer_active) === 1
+            },
+            date: {
+                end: cardData.date_end,
+                active: cardData.date_active,
+                type: typeof cardData.date_active,
+                parsed: parseInt(cardData.date_active),
+                condition: parseInt(cardData.date_active) === 1 && cardData.date_end
+            }
         });
 
         const card = document.createElement('div');
         card.className = isSubcard ? 'card subcard' : 'card';
         card.dataset.cardId = cardData.id;
         
-        // Wrapper para o conteúdo do card
-        const cardWrapper = document.createElement('div');
-        cardWrapper.className = 'card-wrapper';
-    
-        // Checkbox
-        const checkbox = document.createElement('div');
-        checkbox.className = 'card-checkbox';
-        if (cardData.concluido) {
-            checkbox.classList.add('checked');
-            card.classList.add('concluido');
-        }
-        cardWrapper.appendChild(checkbox);
-    
-        // Conteúdo do card
-        const cardContent = document.createElement('div');
-        cardContent.className = 'card-content';
-    
-        // Nome do card
-        const cardName = document.createElement('div');
-        cardName.className = 'card-name';
-        cardName.textContent = cardData.nome;
-        cardContent.appendChild(cardName);
-    
-        // Informações de tempo (timer e data)
-        const timeInfo = document.createElement('div');
-        timeInfo.className = 'card-time-info';
-    
-        // Adiciona timer se existir
-        if (cardData.timer_end) {
-            const timerDiv = document.createElement('div');
-            timerDiv.className = 'card-timer';
-            timerDiv.innerHTML = `
-                <i class="fas fa-clock"></i>
-                <span class="timer-remaining" data-timer-end="${cardData.timer_end}">
-                    Carregando...
-                </span>
-            `;
-            timeInfo.appendChild(timerDiv);
-        }
-    
-        // Antes de renderizar, verifica as condições
-        const shouldShowDate = cardData.date_active === '1' || cardData.date_active === 1;
-        const hasDateEnd = Boolean(cardData.date_end);
+        // ... resto do código até a verificação de timer/date ...
 
-        console.log('Condições de exibição da data:', {
-            shouldShowDate,
-            hasDateEnd,
-            date_active: cardData.date_active,
-            date_end: cardData.date_end
-        });
+        // Verifica se precisa criar o timeInfo (com logs)
+        const hasTimer = cardData.timer_end && parseInt(cardData.timer_active) === 1;
+        const hasDate = parseInt(cardData.date_active) === 1 && cardData.date_end;
 
-        // Adiciona a data se ambas as condições forem verdadeiras
-        if (shouldShowDate && hasDateEnd) {
-            const dateDiv = document.createElement('div');
-            dateDiv.className = 'card-date';
-            dateDiv.innerHTML = `
-                <i class="fas fa-calendar"></i>
-                <span class="date-end" data-date-end="${cardData.date_end}">
-                    ${formatDate(cardData.date_end)}
-                </span>
-            `;
-            timeInfo.appendChild(dateDiv);
+        // Só cria o timeInfo se tiver timer OU data para mostrar
+        if (hasTimer || hasDate) {
+            const timeInfo = document.createElement('div');
+            timeInfo.className = 'card-time-info';
+
+            // Adiciona timer se existir e estiver ativo
+            if (hasTimer) {
+                console.log('Adicionando timer ao card');
+                const timerDiv = document.createElement('div');
+                timerDiv.className = 'card-timer';
+                timerDiv.innerHTML = `
+                    <i class="fas fa-clock"></i>
+                    <span class="timer-remaining" data-timer-end="${cardData.timer_end}">
+                        Carregando...
+                    </span>
+                `;
+                timeInfo.appendChild(timerDiv);
+            }
+
+            // Adiciona a data se estiver ativa
+            if (hasDate) {
+                console.log('Adicionando data ao card');
+                const dateDiv = document.createElement('div');
+                dateDiv.className = 'card-date';
+                dateDiv.innerHTML = `
+                    <i class="fas fa-calendar"></i>
+                    <span class="date-end" data-date-end="${cardData.date_end}">
+                        ${formatDate(cardData.date_end)}
+                    </span>
+                `;
+                timeInfo.appendChild(dateDiv);
+            }
+
+            cardContent.appendChild(timeInfo);
         }
     
-        // Adiciona as informações de tempo ao conteúdo
-        cardContent.appendChild(timeInfo);
         cardWrapper.appendChild(cardContent);
         card.appendChild(cardWrapper);
     
@@ -2064,14 +2047,10 @@ function isExpired(dateString) {
             const dateEnd = document.getElementById('dateEnd');
             const dateValue = dateEnd.value;
 
-            console.log('Toggle Date:', {
-                isActive: isActive,
-                willBeActive: !isActive,
-                dateValue: dateValue
-            });
+            console.log('Toggle Date:', { isActive, willBeActive: !isActive, dateValue });
 
             if (!dateValue) {
-                alert('Selecione uma data primeiro');
+                alert('Por favor, selecione uma data');
                 return;
             }
 
@@ -2083,12 +2062,8 @@ function isExpired(dateString) {
                     const dateStatus = document.querySelector('.date-status');
                     dateStatus.textContent = isActive ? 'Inativo' : formatDate(dateValue);
                     
-                    // Recarrega a lista para atualizar a visualização do card
-                    const listCard = document.querySelector(`.card[data-card-id="${cardId}"]`).closest('.list-card');
-                    if (listCard) {
-                        const listId = listCard.dataset.listId;
-                        reloadListCards(listId);
-                    }
+                    // Adicionar esta linha para recarregar a visualização
+                    loadWorkflowLists(selectedWorkflowId);
                 }
             });
         }
