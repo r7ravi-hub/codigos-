@@ -979,8 +979,15 @@ try {
                     try {
                         $cardId = $_POST['card_id'];
                         $date_end = $_POST['date_end'];
-                        $date_active = $_POST['date_active'] === 'true' ? 1 : 0;
-                        $date_sound = $_POST['date_sound'] === 'true' ? 1 : 0;
+                        $date_active = $_POST['date_active'];
+                        $date_sound = $_POST['date_sound'];
+
+                        // Log para debug
+                        error_log("UPDATE CARD DATE - Dados recebidos:");
+                        error_log("Card ID: " . $cardId);
+                        error_log("Date End: " . $date_end);
+                        error_log("Date Active: " . $date_active);
+                        error_log("Date Sound: " . $date_sound);
 
                         $stmt = $pdo->prepare("
                             UPDATE workflow_cards 
@@ -989,15 +996,27 @@ try {
                                 date_sound = ?
                             WHERE id = ?
                         ");
-
+                        
                         $success = $stmt->execute([$date_end, $date_active, $date_sound, $cardId]);
                         
+                        // Log do resultado
+                        error_log("Query executada. Sucesso: " . ($success ? 'true' : 'false'));
+                        
+                        if (!$success) {
+                            error_log("Erro PDO: " . print_r($stmt->errorInfo(), true));
+                        }
+
                         echo json_encode([
                             'success' => $success,
-                            'date_end' => $date_end
+                            'debug' => [
+                                'card_id' => $cardId,
+                                'date_active' => $date_active,
+                                'date_end' => $date_end,
+                                'date_sound' => $date_sound
+                            ]
                         ]);
-                        
                     } catch (Exception $e) {
+                        error_log("Erro na atualização da data: " . $e->getMessage());
                         echo json_encode(['success' => false, 'message' => $e->getMessage()]);
                     }
                     exit;
