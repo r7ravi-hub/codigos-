@@ -613,96 +613,106 @@ function isExpired(dateString) {
 
     
     function createCardElement(cardData, isSubcard = false) {
-        // Log detalhado dos dados recebidos
-        console.log('Criando card:', {
+        console.log('\n=== CRIANDO CARD ===');
+        console.log('Dados recebidos:', {
             id: cardData.id,
-            nome: cardData.nome,
-            timer: {
-                end: cardData.timer_end,
-                active: cardData.timer_active,
-                type: typeof cardData.timer_active,
-                parsed: parseInt(cardData.timer_active),
-                condition: cardData.timer_end && parseInt(cardData.timer_active) === 1
-            },
-            date: {
-                end: cardData.date_end,
-                active: cardData.date_active,
-                type: typeof cardData.date_active,
-                parsed: parseInt(cardData.date_active),
-                condition: parseInt(cardData.date_active) === 1 && cardData.date_end
-            }
+            timer_active: cardData.timer_active,
+            timer_end: cardData.timer_end,
+            date_active: cardData.date_active,
+            date_end: cardData.date_end
         });
-
+        
         const card = document.createElement('div');
         card.className = isSubcard ? 'card subcard' : 'card';
         card.dataset.cardId = cardData.id;
         
-        // ... resto do código até a verificação de timer/date ...
+        const cardWrapper = document.createElement('div');
+        cardWrapper.className = 'card-wrapper';
+        
+        const cardContent = document.createElement('div');
+        cardContent.className = 'card-content';
+        
+        // Adiciona o nome do card
+        const cardName = document.createElement('div');
+        cardName.className = 'card-name';
+        cardName.textContent = cardData.nome;
+        cardContent.appendChild(cardName);
 
-        // Verifica se precisa criar o timeInfo (com logs)
-        const hasTimer = cardData.timer_end && parseInt(cardData.timer_active) === 1;
-        const hasDate = parseInt(cardData.date_active) === 1 && cardData.date_end;
+        // Cria container para timer e data
+        const timeContainer = document.createElement('div');
+        timeContainer.className = 'time-container';
 
-        // Só cria o timeInfo se tiver timer OU data para mostrar
-        if (hasTimer || hasDate) {
-            const timeInfo = document.createElement('div');
-            timeInfo.className = 'card-time-info';
-
-            // Adiciona timer se existir e estiver ativo
-            if (hasTimer) {
-                console.log('Adicionando timer ao card');
-                const timerDiv = document.createElement('div');
-                timerDiv.className = 'card-timer';
-                timerDiv.innerHTML = `
-                    <i class="fas fa-clock"></i>
-                    <span class="timer-remaining" data-timer-end="${cardData.timer_end}">
-                        Carregando...
-                    </span>
-                `;
-                timeInfo.appendChild(timerDiv);
-            }
-
-            // Adiciona a data se estiver ativa
-            if (hasDate) {
-                console.log('Adicionando data ao card');
-                const dateDiv = document.createElement('div');
-                dateDiv.className = 'card-date';
-                dateDiv.innerHTML = `
-                    <i class="fas fa-calendar"></i>
-                    <span class="date-end" data-date-end="${cardData.date_end}">
-                        ${formatDate(cardData.date_end)}
-                    </span>
-                `;
-                timeInfo.appendChild(dateDiv);
-            }
-
-            cardContent.appendChild(timeInfo);
+        // Verifica e adiciona timer
+        if (cardData.timer_active === '1' && cardData.timer_end) {
+            console.log('Adicionando timer:', {
+                active: cardData.timer_active,
+                end: cardData.timer_end
+            });
+            const timerDiv = document.createElement('div');
+            timerDiv.className = 'card-timer';
+            timerDiv.innerHTML = `
+                <i class="fas fa-clock"></i>
+                <span class="timer-remaining" data-timer-end="${cardData.timer_end}">
+                    Carregando...
+                </span>
+            `;
+            timeContainer.appendChild(timerDiv);
         }
-    
+
+        // Verifica e adiciona data
+        if (cardData.date_active === '1' && cardData.date_end) {  // <-- CORREÇÃO AQUI
+            console.log('Adicionando data:', {
+                active: cardData.date_active,
+                end: cardData.date_end
+            });
+            const dateDiv = document.createElement('div');
+            dateDiv.className = 'card-date';
+            dateDiv.innerHTML = `
+                <i class="fas fa-calendar"></i>
+                <span class="date-end" data-date-end="${cardData.date_end}">
+                    ${formatDate(cardData.date_end)}
+                </span>
+            `;
+            timeContainer.appendChild(dateDiv);
+        }
+
+        // Só adiciona o container se tiver algum elemento
+        if (timeContainer.children.length > 0) {
+            cardContent.appendChild(timeContainer);
+        }
+
         cardWrapper.appendChild(cardContent);
         card.appendChild(cardWrapper);
-    
-        // Se não for subcard, adiciona botão de expandir e container de subcards
-        if (!isSubcard) {
-            const expandButton = document.createElement('button');
-            expandButton.className = 'card-expand-button';
-            expandButton.innerHTML = '▶';
-            cardWrapper.appendChild(expandButton);
-    
-            const subcardsContainer = document.createElement('div');
-            subcardsContainer.className = 'subcards-container';
-            subcardsContainer.style.display = 'none';
-    
-            if (cardData.subcards && cardData.subcards.length > 0) {
-                cardData.subcards.forEach(subcard => {
-                    const subcardElement = createCardElement(subcard, true);
-                    subcardsContainer.appendChild(subcardElement);
-                });
-            }
-    
-            card.appendChild(subcardsContainer);
-        }
-    
+
+        // Adiciona os outros elementos necessários (menu, etc)
+        // ... resto do código existente ...
+
+        console.log('Card criado:', {
+            id: cardData.id,
+            temTimer: Boolean(card.querySelector('.card-timer')),
+            temData: Boolean(card.querySelector('.card-date'))
+        });
+
+        // Antes de adicionar timer
+        console.log('Verificando timer:', {
+            condition: cardData.timer_active === '1' && cardData.timer_end,
+            timer_active: cardData.timer_active,
+            timer_end: cardData.timer_end
+        });
+
+        // Antes de adicionar data
+        console.log('Verificando data:', {
+            condition: cardData.date_active === '1' && cardData.date_end,
+            date_active: cardData.date_active,
+            date_end: cardData.date_end
+        });
+
+        // Após criar os elementos
+        console.log('Elementos no card:', {
+            temTimer: Boolean(cardContent.querySelector('.card-timer')),
+            temData: Boolean(cardContent.querySelector('.card-date'))
+        });
+
         return card;
     }
 
@@ -1241,6 +1251,23 @@ function isExpired(dateString) {
             // Atualiza os timers a cada segundo
             setInterval(updateCardTimers, 1000);
 
+            console.log('\n=== DADOS RECEBIDOS DO SERVIDOR ===');
+            if (data.lists) {
+                data.lists.forEach(list => {
+                    if (list.cards) {
+                        list.cards.forEach(card => {
+                            console.log('Card do servidor:', {
+                                id: card.id,
+                                timer_active: card.timer_active,
+                                date_active: card.date_active,
+                                timer_end: card.timer_end,
+                                date_end: card.date_end
+                            });
+                        });
+                    }
+                });
+            }
+
             return Promise.resolve(); // Retorna uma Promise resolvida
         } catch (error) {
             console.error('Erro ao carregar listas:', error);
@@ -1581,13 +1608,15 @@ function isExpired(dateString) {
 
     // Adicione esta função no início do arquivo, junto com as outras funções
     function openEditCardModal(cardId) {
+        console.log('=== ABRINDO MODAL DE EDIÇÃO ===');
+        console.log('Card ID:', cardId);
+        
         const modal = document.getElementById('editCardModal');
         const nameInput = modal.querySelector('#editCardName');
         const descriptionInput = modal.querySelector('#editCardDescription');
         const confirmBtn = modal.querySelector('.confirm-btn');
         const cancelBtn = modal.querySelector('.cancel-btn');
         
-        // Guarda referência ao card atual
         const cardElement = document.querySelector(`.card[data-card-id="${cardId}"]`);
         if (!cardElement) {
             console.error('Card não encontrado');
@@ -1604,8 +1633,22 @@ function isExpired(dateString) {
         fetch(`index.php?action=get_card&card_id=${cardId}`)
             .then(response => response.json())
             .then(data => {
+                console.log('Dados do card recebidos:', data);
                 if (data.success) {
                     const cardData = data.card;
+                    console.log('Estado do timer/data:', {
+                        timer: {
+                            end: cardData.timer_end,
+                            active: cardData.timer_active,
+                            sound: cardData.timer_sound
+                        },
+                        date: {
+                            end: cardData.date_end,
+                            active: cardData.date_active,
+                            sound: cardData.date_sound
+                        }
+                    });
+
                     nameInput.value = cardData.nome;
                     descriptionInput.value = cardData.descricao;
                     
@@ -1990,36 +2033,53 @@ function isExpired(dateString) {
         }
 
         toggleTimer(cardId) {
+            console.log('=== TOGGLE TIMER INICIADO ===');
             const btn = document.querySelector('.timer-start-btn');
             const isActive = btn.classList.contains('active');
             const minutes = parseInt(document.getElementById('timerMinutes').value);
 
+            console.log('Estado inicial do timer:', {
+                cardId,
+                isActive,
+                minutes,
+                btnState: btn.classList.toString()
+            });
+
             if (isActive) {
+                console.log('Desativando timer');
                 this.stopTimer(cardId);
                 btn.classList.remove('active');
                 btn.textContent = '▶';
                 this.saveTimerState(cardId, false).then(success => {
-                    if (success) {
-                        loadWorkflowLists(selectedWorkflowId);
-                    }
+                    console.log('Timer desativado com sucesso:', success);
+                    loadWorkflowLists(selectedWorkflowId);
                 });
             } else if (minutes > 0) {
+                console.log('Ativando timer');
                 this.saveTimerState(cardId, true).then(success => {
-                    if (success) {
-                        const endTime = new Date();
-                        endTime.setMinutes(endTime.getMinutes() + minutes);
-                        this.startTimer(cardId, endTime);
-                        btn.classList.add('active');
-                        btn.textContent = '⏸';
-                        loadWorkflowLists(selectedWorkflowId);
-                    }
+                    console.log('Timer ativado com sucesso:', success);
+                    const endTime = new Date();
+                    endTime.setMinutes(endTime.getMinutes() + minutes);
+                    console.log('Tempo final definido:', endTime);
+                    this.startTimer(cardId, endTime);
+                    btn.classList.add('active');
+                    btn.textContent = '⏸';
+                    loadWorkflowLists(selectedWorkflowId);
                 });
             }
         }
 
         saveTimerState(cardId, active) {
+            console.log('=== SALVANDO ESTADO DO TIMER ===');
             const minutes = parseInt(document.getElementById('timerMinutes').value);
             const sound = document.getElementById('timerSound').checked;
+
+            console.log('Dados a serem enviados:', {
+                cardId,
+                active,
+                minutes,
+                sound
+            });
 
             const formData = new FormData();
             formData.append('action', 'update_card_timer');
@@ -2034,6 +2094,7 @@ function isExpired(dateString) {
             })
             .then(response => response.json())
             .then(data => {
+                console.log('Resposta do servidor:', data);
                 if (data.success) {
                     return true;
                 }
