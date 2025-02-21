@@ -47,11 +47,16 @@ function getWorkflowLists($pdo, $workflowId) {
     // Para cada lista, busca seus cards e subcards
     foreach ($lists as &$list) {
         $stmt = $pdo->prepare("
-            SELECT c.*, 
-                   (SELECT COUNT(*) 
-                    FROM workflow_cards sc 
-                    WHERE sc.parent_id = c.id 
-                    AND sc.status = 'ativo') as subcard_count
+            SELECT 
+                c.*,
+                CAST(COALESCE(c.timer_active, 0) AS UNSIGNED) as timer_active,
+                CAST(COALESCE(c.date_active, 0) AS UNSIGNED) as date_active,
+                COALESCE(c.timer_end, NULL) as timer_end,
+                COALESCE(c.date_end, NULL) as date_end,
+                (SELECT COUNT(*) 
+                 FROM workflow_cards sc 
+                 WHERE sc.parent_id = c.id 
+                 AND sc.status = 'ativo') as subcard_count
             FROM workflow_cards c
             WHERE c.lista_id = ? 
             AND c.status = 'ativo'
