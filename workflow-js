@@ -217,7 +217,7 @@ function isExpired(dateString) {
         listElement.innerHTML = headerHtml + `
             <div class="list-content">
                 ${list.cards ? list.cards.map(card => {
-                    const activeSubcards = card.subcards.filter(subcard => subcard.concluida != 1).length;
+                    const activeSubcards = card.subcards.length;
                     
                     return `
                         <div class="card ${card.concluida == 1 ? 'concluido' : ''}" 
@@ -229,7 +229,8 @@ function isExpired(dateString) {
                                     <div class="card-main-info">
                                         <div class="card-name">
                                             ${card.nome}
-                                            <span class="subcard-count">${activeSubcards}</span>
+                                            ${activeSubcards > 0 ? `<span class="subcard-count">${activeSubcards}</span>` : ''}
+                                            ${card.descricao ? `<span class="description-icon">✏️</span>` : ''}
                                         </div>
                                         ${card.subcards.length > 0 ? 
                                             `<div class="card-expand-button" role="button" aria-label="Expandir/Retrair">▶</div>` 
@@ -830,7 +831,6 @@ function isExpired(dateString) {
                             return `
                                 <div class="card ${card.concluida == 1 ? 'concluido' : ''} ${card.subcards && card.subcards.length > 0 ? 'card-with-subcards' : ''}" 
                                      data-card-id="${card.id}">
-                                    ${card.subcards && card.subcards.length > 0 ? '<div class="card-expand-button">▶</div>' : ''}
                                     <div class="card-wrapper">
                                         <div class="card-checkbox ${card.concluida == 1 ? 'checked' : ''}"></div>
                                         <div class="card-content">
@@ -838,7 +838,7 @@ function isExpired(dateString) {
                                             ${card.timer_active === '1' && card.timer_end ? `
                                                 <div class="card-timer ${isExpired(card.timer_end) ? 'expired' : ''}">
                                                     <i class="fas fa-clock"></i>
-                                                    <span class="timer-remaining ${isExpired(card.timer_end) ? 'expired' : ''}" data-timer-end="${card.timer_end}">
+                                                    <span class="timer-remaining" data-timer-end="${card.timer_end}">
                                                         ${isExpired(card.timer_end) ? 'Expirado' : 'Carregando...'}
                                                     </span>
                                                 </div>
@@ -1722,9 +1722,7 @@ function isExpired(dateString) {
                 if (action === 'edit') {
                     openEditListModal(listId, currentName);
                 } else if (action === 'delete') {
-                    if (confirm('Tem certeza que deseja excluir esta lista?')) {
-                        await deleteList(listId);
-                    }
+                    await deleteList(listId);
                 }
                 
                 // Fecha o menu após a ação
@@ -1753,31 +1751,9 @@ function isExpired(dateString) {
         });
     }
 
-    // Função para tratar as ações do menu da lista
-    function handleListAction(action, listId, listElement) {
-        switch(action) {
-            case 'edit':
-                const currentName = listElement.querySelector('.list-title').textContent;
-                openEditListModal(listId, currentName);
-                break;
-            
-            case 'delete':
-                if (confirm('Tem certeza que deseja excluir esta lista?')) {
-                    deleteList(listId)
-                        .then(() => {
-                            listElement.remove();
-                        })
-                        .catch(error => {
-                            alert(error.message);
-                        });
-                }
-                break;
-        }
-    }
-
     async function deleteList(listId) {
         try {
-            if (!confirm('Tem certeza que deseja excluir esta lista?')) {
+            if (!confirm('Tem certeza que deseja inativar esta lista?')) {
                 return false;
             }
     
@@ -1790,17 +1766,31 @@ function isExpired(dateString) {
                 body: formData
             });
     
-            const data = await response.json();
+            const text = await response.text(); // Primeiro pegamos o texto da resposta
             
-            if (data.success) {
+            try {
+                // Tenta encontrar um JSON válido na resposta
+                const jsonMatch = text.match(/\{.*\}/);
+                if (jsonMatch) {
+                    const data = JSON.parse(jsonMatch[0]);
+                    if (data.success) {
+                        await loadWorkflowLists(selectedWorkflowId);
+                        return true;
+                    }
+                }
+                // Se chegou aqui, a lista foi provavelmente deletada mesmo sem resposta válida
                 await loadWorkflowLists(selectedWorkflowId);
                 return true;
-            } else {
-                throw new Error(data.message || 'Erro ao excluir lista');
+            } catch (jsonError) {
+                console.log('Resposta do servidor:', text);
+                // Se a lista foi deletada mas a resposta não é um JSON válido
+                // ainda recarregamos as listas
+                await loadWorkflowLists(selectedWorkflowId);
+                return true;
             }
         } catch (error) {
             console.error('Erro ao deletar lista:', error);
-            alert(error.message);
+            alert('Erro ao deletar lista: ' + error.message);
             return false;
         }
     }
@@ -1835,12 +1825,14 @@ function isExpired(dateString) {
         const dateActive = document.querySelector('.date-start-btn').classList.contains('active');
         const dateSound = document.getElementById('dateSound').checked;
         
+        console.log('Atualizando data:', { cardId, dateEnd, dateActive, dateSound }); // Debug
+        
         const formData = new FormData();
         formData.append('action', 'update_card');
         formData.append('card_id', cardId);
         formData.append('date_end', dateEnd);
-        formData.append('date_active', dateActive);
-        formData.append('date_sound', dateSound);
+        formData.append('date_active', dateActive ? '1' : '0'); // Garante que seja '1' ou '0'
+        formData.append('date_sound', dateSound ? '1' : '0');
 
         fetch('index.php', {
             method: 'POST',
@@ -1849,8 +1841,20 @@ function isExpired(dateString) {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                updateDateDisplay(cardId);
+                console.log('Data atualizada com sucesso'); // Debug
+                // Recarrega a lista para atualizar a visualização
+                const listCard = document.querySelector(`.card[data-card-id="${cardId}"]`).closest('.list-card');
+                if (listCard) {
+                    const listId = listCard.dataset.listId;
+                    reloadListCards(listId);
+                }
+            } else {
+                throw new Error(data.message || 'Erro ao atualizar data do card');
             }
+        })
+        .catch(error => {
+            console.error('Erro ao atualizar data:', error);
+            alert('Erro ao atualizar data do card: ' + error.message);
         });
     }
 
@@ -2047,7 +2051,13 @@ function isExpired(dateString) {
                     btn.textContent = isActive ? '▶' : '⏸';
                     const dateStatus = document.querySelector('.date-status');
                     dateStatus.textContent = isActive ? 'Inativo' : formatDate(dateValue);
-                    loadWorkflowLists(selectedWorkflowId);
+                    
+                    // Recarrega a lista para atualizar a visualização do card
+                    const listCard = document.querySelector(`.card[data-card-id="${cardId}"]`).closest('.list-card');
+                    if (listCard) {
+                        const listId = listCard.dataset.listId;
+                        reloadListCards(listId);
+                    }
                 }
             });
         }
@@ -2082,8 +2092,8 @@ function isExpired(dateString) {
             formData.append('action', 'update_card_date');
             formData.append('card_id', cardId);
             formData.append('date_end', dateEnd.value);
-            formData.append('date_active', active);
-            formData.append('date_sound', dateSound.checked);
+            formData.append('date_active', active ? '1' : '0');
+            formData.append('date_sound', dateSound.checked ? '1' : '0');
 
             return fetch('index.php', {
                 method: 'POST',
@@ -2094,7 +2104,7 @@ function isExpired(dateString) {
                 if (data.success) {
                     return true;
                 }
-                throw new Error(data.message);
+                throw new Error(data.message || 'Erro ao atualizar data');
             });
         }
     }
