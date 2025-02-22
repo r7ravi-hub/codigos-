@@ -244,24 +244,24 @@ function isExpired(dateString) {
                                             </div>
                                         </div>
                                     </div>
-                                    ${card.timer_end ? `
+                                    ${card.timer_active === '1' && card.timer_end ? `
                                         <div class="card-time-info">
-                                            ${card.timer_end ? `
-                                                <div class="card-timer ${isExpired(card.timer_end) ? 'expired' : ''}">
-                                                    <i class="fas fa-clock"></i>
-                                                    <span class="timer-remaining ${isExpired(card.timer_end) ? 'expired' : ''}" data-timer-end="${card.timer_end}">
-                                                        ${isExpired(card.timer_end) ? 'Expirado' : 'Carregando...'}
-                                                    </span>
-                                                </div>
-                                            ` : ''}
-                                            ${card.date_end ? `
-                                                <div class="card-date">
-                                                    <i class="fas fa-calendar"></i>
-                                                    <span class="date-end" data-date-end="${card.date_end}">
-                                                        ${formatDate(card.date_end)}
-                                                    </span>
-                                                </div>
-                                            ` : ''}
+                                            <div class="card-timer ${isExpired(card.timer_end) ? 'expired' : ''}">
+                                                <i class="fas fa-clock"></i>
+                                                <span class="timer-remaining" data-timer-end="${card.timer_end}">
+                                                    ${isExpired(card.timer_end) ? 'Expirado' : 'Carregando...'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ` : ''}
+                                    ${card.date_active === '1' && card.date_end ? `
+                                        <div class="card-date-info ${isDateExpired(card.date_end) ? 'expired' : ''}">
+                                            <div class="card-date">
+                                                <i class="fas fa-calendar"></i>
+                                                <span class="date-end">
+                                                    ${formatDate(card.date_end)}
+                                                </span>
+                                            </div>
                                         </div>
                                     ` : ''}
                                 </div>
@@ -285,24 +285,24 @@ function isExpired(dateString) {
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    ${subcard.timer_end ? `
+                                                    ${subcard.timer_active === '1' && subcard.timer_end ? `
                                                         <div class="card-time-info">
-                                                            ${subcard.timer_end ? `
-                                                                <div class="card-timer ${isExpired(subcard.timer_end) ? 'expired' : ''}">
-                                                                    <i class="fas fa-clock"></i>
-                                                                    <span class="timer-remaining ${isExpired(subcard.timer_end) ? 'expired' : ''}" data-timer-end="${subcard.timer_end}">
-                                                                        ${isExpired(subcard.timer_end) ? 'Expirado' : 'Carregando...'}
-                                                                    </span>
-                                                                </div>
-                                                            ` : ''}
-                                                            ${subcard.date_end ? `
-                                                                <div class="card-date">
-                                                                    <i class="fas fa-calendar"></i>
-                                                                    <span class="date-end" data-date-end="${subcard.date_end}">
-                                                                        ${formatDate(subcard.date_end)}
-                                                                    </span>
-                                                                </div>
-                                                            ` : ''}
+                                                            <div class="card-timer ${isExpired(subcard.timer_end) ? 'expired' : ''}">
+                                                                <i class="fas fa-clock"></i>
+                                                                <span class="timer-remaining" data-timer-end="${subcard.timer_end}">
+                                                                    ${isExpired(subcard.timer_end) ? 'Expirado' : 'Carregando...'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    ` : ''}
+                                                    ${subcard.date_active === '1' && subcard.date_end ? `
+                                                        <div class="card-date-info">
+                                                            <div class="card-date">
+                                                                <i class="fas fa-calendar"></i>
+                                                                <span class="date-end">
+                                                                    ${formatDate(subcard.date_end)}
+                                                                </span>
+                                                            </div>
                                                         </div>
                                                     ` : ''}
                                                 </div>
@@ -614,13 +614,7 @@ function isExpired(dateString) {
     
     function createCardElement(cardData, isSubcard = false) {
         console.log('\n=== CRIANDO CARD ===');
-        console.log('Dados recebidos:', {
-            id: cardData.id,
-            timer_active: cardData.timer_active,
-            timer_end: cardData.timer_end,
-            date_active: cardData.date_active,
-            date_end: cardData.date_end
-        });
+        console.log('Dados brutos do card:', cardData);
         
         const card = document.createElement('div');
         card.className = isSubcard ? 'card subcard' : 'card';
@@ -631,23 +625,22 @@ function isExpired(dateString) {
         
         const cardContent = document.createElement('div');
         cardContent.className = 'card-content';
-        
-        // Adiciona o nome do card
-        const cardName = document.createElement('div');
-        cardName.className = 'card-name';
-        cardName.textContent = cardData.nome;
-        cardContent.appendChild(cardName);
+        cardContent.textContent = cardData.nome;
 
         // Cria container para timer e data
         const timeContainer = document.createElement('div');
         timeContainer.className = 'time-container';
 
+        // Debug antes de adicionar timer
+        console.log('Verificação do Timer:', {
+            timer_active: cardData.timer_active,
+            timer_end: cardData.timer_end,
+            condicao: `${cardData.timer_active === '1'} && ${Boolean(cardData.timer_end)}`
+        });
+
         // Verifica e adiciona timer
         if (cardData.timer_active === '1' && cardData.timer_end) {
-            console.log('Adicionando timer:', {
-                active: cardData.timer_active,
-                end: cardData.timer_end
-            });
+            console.log('✓ Timer será adicionado');
             const timerDiv = document.createElement('div');
             timerDiv.className = 'card-timer';
             timerDiv.innerHTML = `
@@ -659,12 +652,27 @@ function isExpired(dateString) {
             timeContainer.appendChild(timerDiv);
         }
 
+        // Debug antes de adicionar data
+        console.log('Verificação da Data:', {
+            date_active: cardData.date_active,
+            date_end: cardData.date_end,
+            condicao: `${cardData.date_active === '1'} && ${Boolean(cardData.date_end)}`
+        });
+
+        // Antes da verificação da data
+        console.log('Avaliação da condição da data:', {
+            date_active: cardData.date_active,
+            date_active_type: typeof cardData.date_active,
+            date_end: cardData.date_end,
+            date_end_type: typeof cardData.date_end,
+            condicao_completa: cardData.date_active === '1' && cardData.date_end,
+            parte1: cardData.date_active === '1',
+            parte2: Boolean(cardData.date_end)
+        });
+
         // Verifica e adiciona data
-        if (cardData.date_active === '1' && cardData.date_end) {  // <-- CORREÇÃO AQUI
-            console.log('Adicionando data:', {
-                active: cardData.date_active,
-                end: cardData.date_end
-            });
+        if (cardData.date_active === '1' && cardData.date_end) {
+            console.log('✓ Data será adicionada');
             const dateDiv = document.createElement('div');
             dateDiv.className = 'card-date';
             dateDiv.innerHTML = `
@@ -676,41 +684,29 @@ function isExpired(dateString) {
             timeContainer.appendChild(dateDiv);
         }
 
+        // Debug antes de adicionar o container
+        console.log('Estado do timeContainer:', {
+            quantidadeFilhos: timeContainer.children.length,
+            temTimer: Boolean(timeContainer.querySelector('.card-timer')),
+            temData: Boolean(timeContainer.querySelector('.card-date'))
+        });
+
         // Só adiciona o container se tiver algum elemento
         if (timeContainer.children.length > 0) {
+            console.log(`Adicionando timeContainer com ${timeContainer.children.length} elemento(s)`);
             cardContent.appendChild(timeContainer);
+        } else {
+            console.log('TimeContainer vazio, não será adicionado');
         }
 
         cardWrapper.appendChild(cardContent);
         card.appendChild(cardWrapper);
 
-        // Adiciona os outros elementos necessários (menu, etc)
-        // ... resto do código existente ...
-
-        console.log('Card criado:', {
+        // Debug final
+        console.log('Estado final do card:', {
             id: cardData.id,
             temTimer: Boolean(card.querySelector('.card-timer')),
             temData: Boolean(card.querySelector('.card-date'))
-        });
-
-        // Antes de adicionar timer
-        console.log('Verificando timer:', {
-            condition: cardData.timer_active === '1' && cardData.timer_end,
-            timer_active: cardData.timer_active,
-            timer_end: cardData.timer_end
-        });
-
-        // Antes de adicionar data
-        console.log('Verificando data:', {
-            condition: cardData.date_active === '1' && cardData.date_end,
-            date_active: cardData.date_active,
-            date_end: cardData.date_end
-        });
-
-        // Após criar os elementos
-        console.log('Elementos no card:', {
-            temTimer: Boolean(cardContent.querySelector('.card-timer')),
-            temData: Boolean(cardContent.querySelector('.card-date'))
         });
 
         return card;
@@ -845,61 +841,75 @@ function isExpired(dateString) {
                     cardsContainer.innerHTML = data.cards.map(card => {
                         // Verifica se é um card principal (sem parent_id)
                         if (!card.parent_id) {
+                            console.log('Renderizando card:', {
+                                id: card.id,
+                                date_active: card.date_active,
+                                date_end: card.date_end,
+                                condicao: card.date_active === '1' && card.date_end
+                            });
                             return `
                                 <div class="card ${card.concluida == 1 ? 'concluido' : ''} ${card.subcards && card.subcards.length > 0 ? 'card-with-subcards' : ''}" 
                                      data-card-id="${card.id}">
                                     <div class="card-wrapper">
                                         <div class="card-checkbox ${card.concluida == 1 ? 'checked' : ''}"></div>
                                         <div class="card-content">
-                                            ${card.nome}
-                                            ${card.timer_active === '1' && card.timer_end ? `
-                                                <div class="card-timer ${isExpired(card.timer_end) ? 'expired' : ''}">
-                                                    <i class="fas fa-clock"></i>
-                                                    <span class="timer-remaining" data-timer-end="${card.timer_end}">
-                                                        ${isExpired(card.timer_end) ? 'Expirado' : 'Carregando...'}
-                                                    </span>
-                                                </div>
-                                            ` : ''}
-                                            ${card.date_active === '1' && card.date_end ? `
-                                                <div class="card-date">
-                                                    <i class="fas fa-calendar"></i>
-                                                    <span class="date-end ${isDateExpired(card.date_end) ? 'expired' : ''}">
-                                                        ${formatDate(card.date_end)}
-                                                    </span>
-                                                </div>
-                                            ` : ''}
-                                            ${card.subcards && card.subcards.length > 0 ? 
-                                              `<span class="subcard-count">(${card.subcards.length})</span>` : ''}
-                                        </div>
-                                        <div class="card-menu-container">
-                                            <button class="card-menu-trigger">⋮</button>
-                                            <div class="card-menu">
-                                                <div class="card-menu-item" data-action="edit">Editar</div>
-                                                <div class="card-menu-item" data-action="subcard">Criar Subcard</div>
-                                                <div class="card-menu-item" data-action="delete">Apagar</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    ${card.subcards && card.subcards.length > 0 ? `
-                                        <div class="subcards-container">
-                                            ${card.subcards.map(subcard => `
-                                                <div class="card subcard ${subcard.concluida == 1 ? 'concluido' : ''}" 
-                                                     data-card-id="${subcard.id}">
-                                                    <div class="card-wrapper">
-                                                        <div class="card-checkbox ${subcard.concluida == 1 ? 'checked' : ''}"></div>
-                                                        <div class="card-content">${subcard.nome}</div>
-                                                        <div class="card-menu-container">
-                                                            <button class="card-menu-trigger">⋮</button>
-                                                            <div class="card-menu">
-                                                                <div class="card-menu-item" data-action="edit">Editar</div>
-                                                                <div class="card-menu-item" data-action="delete">Apagar</div>
+                                            <div class="card-main-info">
+                                                <div class="card-name">
+                                                    ${card.nome}
+                                                    ${card.timer_active === '1' && card.timer_end ? `
+                                                        <div class="card-time-info">
+                                                            <div class="card-timer ${isExpired(card.timer_end) ? 'expired' : ''}">
+                                                                <i class="fas fa-clock"></i>
+                                                                <span class="timer-remaining" data-timer-end="${card.timer_end}">
+                                                                    ${isExpired(card.timer_end) ? 'Expirado' : 'Carregando...'}
+                                                                </span>
                                                             </div>
                                                         </div>
+                                                    ` : ''}
+                                                    ${card.date_active === '1' && card.date_end ? `
+                                                        <div class="card-date-info ${isDateExpired(card.date_end) ? 'expired' : ''}">
+                                                            <div class="card-date">
+                                                                <i class="fas fa-calendar"></i>
+                                                                <span class="date-end">
+                                                                    ${formatDate(card.date_end)}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    ` : ''}
+                                                    ${card.subcards && card.subcards.length > 0 ? 
+                                                      `<span class="subcard-count">(${card.subcards.length})</span>` : ''}
+                                                </div>
+                                                <div class="card-menu-container">
+                                                    <button class="card-menu-trigger">⋮</button>
+                                                    <div class="card-menu">
+                                                        <div class="card-menu-item" data-action="edit">Editar</div>
+                                                        <div class="card-menu-item" data-action="subcard">Criar Subcard</div>
+                                                        <div class="card-menu-item" data-action="delete">Apagar</div>
                                                     </div>
                                                 </div>
-                                            `).join('')}
+                                            </div>
+                                            ${card.subcards && card.subcards.length > 0 ? `
+                                                <div class="subcards-container">
+                                                    ${card.subcards.map(subcard => `
+                                                        <div class="card subcard ${subcard.concluida == 1 ? 'concluido' : ''}" 
+                                                             data-card-id="${subcard.id}">
+                                                            <div class="card-wrapper">
+                                                                <div class="card-checkbox ${subcard.concluida == 1 ? 'checked' : ''}"></div>
+                                                                <div class="card-content">${subcard.nome}</div>
+                                                                <div class="card-menu-container">
+                                                                    <button class="card-menu-trigger">⋮</button>
+                                                                    <div class="card-menu">
+                                                                        <div class="card-menu-item" data-action="edit">Editar</div>
+                                                                        <div class="card-menu-item" data-action="delete">Apagar</div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    `).join('')}
+                                                </div>
+                                            ` : ''}
                                         </div>
-                                    ` : ''}
+                                    </div>
                                 </div>
                             `;
                         }
@@ -2818,8 +2828,10 @@ function initializeWorkflowMenus() {
 
 // Inicializa quando o DOM estiver pronto
 document.addEventListener('DOMContentLoaded', () => {
+    
     console.log('DOM carregado, inicializando...');
     initializeWorkflowMenus();
 });
 
 });
+
